@@ -19,6 +19,24 @@ A list of things that are missing (for now):
 - Multiple seat support (river doesn't support this either, so it's fine for now)
 - The JSON parsing implementation is not "streaming": all blocks should be on the same line
 
+## Installation
+
+External dependencies: `libpango1.0-dev`.
+
+Just clone the repo and use `cargo` to build the project:
+
+```
+git clone https://github.com/MaxVerevkin/i3bar-river
+cd i3bar-river
+cargo install --path .
+```
+
+Then add this to the end of your river init script:
+
+```
+riverctl spawn i3bar-river
+```
+
 ## Configuration
 
 The configuration file should be stored in `$XDG_CONFIG_HOME/i3bar-river/config.toml` or `~/.config/i3bar-river/config.toml`.
