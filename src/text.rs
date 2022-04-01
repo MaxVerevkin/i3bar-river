@@ -118,12 +118,12 @@ impl ComputedText {
         layout.set_height(text_height as i32 * pango::SCALE);
 
         if let Some(bg) = options.bg_color {
-            bg.apply(&context);
+            bg.apply(context);
             context.rectangle(0.0, 0.0, self.width, options.bar_height);
             context.fill().unwrap();
         }
 
-        options.fg_color.apply(&context);
+        options.fg_color.apply(context);
         context.translate(
             text.attr.padding_left,
             (options.bar_height - self.height) * 0.5,

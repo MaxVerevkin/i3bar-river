@@ -312,6 +312,7 @@ pub struct Surface {
 }
 
 impl Surface {
+    #[allow(clippy::too_many_arguments)]
     fn new(
         output: &wl_output::WlOutput,
         output_id: u32,
@@ -366,7 +367,7 @@ impl Surface {
         // Commit so that the server will send a configure event
         surface.commit();
 
-        let river_output_status = river_status.get_river_output_status(&output);
+        let river_output_status = river_status.get_river_output_status(output);
         let tags_info = Rc::new(RefCell::new(TagsInfo::default()));
         let tags_info_handle = Rc::clone(&tags_info);
         let blocks_handle = Rc::clone(&blocks);
