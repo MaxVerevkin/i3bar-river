@@ -1,0 +1,20 @@
+[package]
+name = "i3bar-river"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+smithay-client-toolkit = "0.15"
+wayland-commons = "0.29"
+pangocairo = "0.15"
+anyhow = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+toml = "0.5"
+dirs-next = "2.0"
+log = "0.4"
+env_logger = "0.9"
+memchr = "2.4"
+
+[build-dependencies]
+wayland-scanner = "0.29"
