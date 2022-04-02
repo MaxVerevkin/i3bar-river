@@ -165,19 +165,19 @@ impl Protocol {
 /// Deserialize the last complete object. Returns (`remaining`, `object`). See tests for examples.
 fn de_last<'a, T: Deserialize<'a>>(mut s: &'a str) -> SerdeResult<(&'a str, Option<T>)> {
     let mut last = None;
-    s = s.trim_start_matches(|x: char| x.is_ascii_whitespace() || x == ',');
+    let mut tmp;
     loop {
-        let (rem, obj) = de_once(s)?;
-        last = match obj {
+        (s, tmp) = de_once(s)?;
+        last = match tmp {
             Some(obj) => Some(obj),
-            None => return Ok((rem, last)),
+            None => return Ok((s, last)),
         };
-        s = rem.trim_start_matches(|x: char| x.is_ascii_whitespace() || x == ',');
     }
 }
 
 /// Deserialize the first complete object. Returns (`remaining`, `object`).
 fn de_once<'a, T: Deserialize<'a>>(s: &'a str) -> SerdeResult<(&'a str, Option<T>)> {
+    let s = s.trim_start_matches(|x: char| x.is_ascii_whitespace() || x == ',');
     let mut de = Deserializer::from_str(s).into_iter();
     match de.next() {
         Some(Ok(obj)) => Ok((&s[de.byte_offset()..], Some(obj))),
