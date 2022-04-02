@@ -74,10 +74,11 @@ fn main() {
 
     let config = Rc::new(RefCell::new(Config::new().unwrap()));
     let surfaces = Rc::new(RefCell::new(Vec::<Surface>::new()));
-    let blocks = Rc::new(RefCell::new((Vec::<Block>::new(), false)));
+    let blocks = Rc::new(RefCell::new(Vec::<Block>::new()));
 
     let cmd = config.borrow_mut().command.take().unwrap();
-    let status_cmd = StatusCmd::new(&cmd, Rc::clone(&blocks)).expect("failed run status command");
+    let status_cmd = StatusCmd::new(&cmd, Rc::clone(&blocks), Rc::clone(&surfaces))
+        .expect("failed run status command");
 
     let layer_shell = env.require_global::<zwlr_layer_shell_v1::ZwlrLayerShellV1>();
     let river_status = env.require_global::<zriver_status_manager_v1::ZriverStatusManagerV1>();
@@ -233,6 +234,7 @@ fn main() {
 
     // Run command
     let blocks_handle = Rc::clone(&blocks);
+    let surfaces_handle = Rc::clone(&surfaces);
     event_loop
         .handle()
         .insert_source(
@@ -250,12 +252,13 @@ fn main() {
                     cmd.notify_available()?;
                     Ok(calloop::PostAction::Continue)
                 } else {
-                    let mut blocks = blocks_handle.borrow_mut();
-                    blocks.0 = vec![Block {
+                    *blocks_handle.borrow_mut() = vec![Block {
                         full_text: "[error reading from status command]".into(),
                         ..Default::default()
                     }];
-                    blocks.1 = true;
+                    for s in &mut *surfaces_handle.borrow_mut() {
+                        s.blocks_need_update = true;
+                    }
                     Ok(calloop::PostAction::Remove)
                 }
             },
@@ -285,6 +288,7 @@ fn main() {
 #[derive(PartialEq, Copy, Clone)]
 enum RenderEvent {
     Configure { width: u32, height: u32 },
+    TagsUpdated,
     Closed,
 }
 
@@ -300,7 +304,8 @@ pub struct Surface {
     river_output_status: Main<zriver_output_status_v1::ZriverOutputStatusV1>,
     river_control: Attached<zriver_control_v1::ZriverControlV1>,
     // blocks
-    blocks: Rc<RefCell<(Vec<Block>, bool)>>,
+    blocks: Rc<RefCell<Vec<Block>>>,
+    blocks_need_update: bool,
     status_cmd: StatusCmd,
     // tags
     tags_info: Rc<RefCell<TagsInfo>>,
@@ -322,7 +327,7 @@ impl Surface {
         river_control: Attached<zriver_control_v1::ZriverControlV1>,
         pool: AutoMemPool,
         config: Rc<RefCell<Config>>,
-        blocks: Rc<RefCell<(Vec<Block>, bool)>>,
+        blocks: Rc<RefCell<Vec<Block>>>,
         status_cmd: StatusCmd,
     ) -> Self {
         let layer_surface = layer_shell.get_layer_surface(
@@ -370,19 +375,22 @@ impl Surface {
         let river_output_status = river_status.get_river_output_status(output);
         let tags_info = Rc::new(RefCell::new(TagsInfo::default()));
         let tags_info_handle = Rc::clone(&tags_info);
-        let blocks_handle = Rc::clone(&blocks);
-        river_output_status.quick_assign(move |_, event, _| match event {
-            zriver_output_status_v1::Event::FocusedTags { tags } => {
-                info!("Focused tags updated: {tags}");
-                tags_info_handle.borrow_mut().focused = tags;
-                blocks_handle.borrow_mut().1 = true;
+        let next_render_event_handle = Rc::clone(&next_render_event);
+        river_output_status.quick_assign(move |_, event, _| {
+            match event {
+                zriver_output_status_v1::Event::FocusedTags { tags } => {
+                    info!("Focused tags updated: {tags}");
+                    tags_info_handle.borrow_mut().focused = tags;
+                }
+                zriver_output_status_v1::Event::UrgentTags { tags } => {
+                    info!("Urgent tags updated: {tags}");
+                    tags_info_handle.borrow_mut().urgent = tags;
+                }
+                _ => (),
             }
-            zriver_output_status_v1::Event::UrgentTags { tags } => {
-                info!("Urgent tags updated: {tags}");
-                tags_info_handle.borrow_mut().urgent = tags;
-                blocks_handle.borrow_mut().1 = true;
+            if next_render_event_handle.get().is_none() {
+                next_render_event_handle.set(Some(RenderEvent::TagsUpdated));
             }
-            _ => (),
         });
 
         Self {
@@ -396,6 +404,7 @@ impl Surface {
             river_output_status,
             river_control,
             blocks,
+            blocks_need_update: false,
             status_cmd,
             tags_info,
             tags_computed: Vec::with_capacity(9),
@@ -418,9 +427,13 @@ impl Surface {
                     return false;
                 }
             }
+            Some(RenderEvent::TagsUpdated) => {
+                self.draw();
+                return false;
+            }
             _ => (),
         }
-        if self.blocks.borrow().1 {
+        if self.blocks_need_update {
             self.draw();
             return false;
         }
@@ -456,7 +469,6 @@ impl Surface {
 
     fn draw(&mut self) {
         let config = self.config.borrow();
-        let mut blocks = self.blocks.borrow_mut();
 
         let stride = 4 * self.dimensions.0 as i32;
         let width = self.dimensions.0 as i32;
@@ -528,10 +540,9 @@ impl Surface {
         // Display the blocks
         // TODO: handle short_text
         let mut offset_right = 0.0;
-        blocks.1 = false;
         self.blocks_btns.clear();
         let mut first_block = true;
-        for block in blocks.0.iter().rev() {
+        for block in self.blocks.borrow().iter().rev() {
             if !first_block && block.separator && block.separator_block_width > 0 {
                 let w = block.separator_block_width as f64;
                 config.separator.apply(&cairo_ctx);
@@ -577,6 +588,7 @@ impl Surface {
             );
             first_block = false;
         }
+        self.blocks_need_update = false;
 
         // Attach the buffer to the surface and mark the entire surface as damaged
         self.surface.attach(Some(&buffer), 0, 0);

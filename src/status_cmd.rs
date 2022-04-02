@@ -1,3 +1,4 @@
+use crate::Surface;
 use std::cell::RefCell;
 use std::io::Result;
 use std::io::Write;
@@ -20,7 +21,8 @@ struct Inner {
     output: LinesBuffer<ChildStdout>,
     input: ChildStdin,
     protocol: Protocol,
-    blocks: Rc<RefCell<(Vec<Block>, bool)>>,
+    blocks: Rc<RefCell<Vec<Block>>>,
+    surfaces: Rc<RefCell<Vec<Surface>>>,
 }
 
 impl AsRawFd for StatusCmd {
@@ -36,16 +38,21 @@ impl Inner {
             self.protocol.process_line(line)?;
         }
         if let Some(new_blocks) = self.protocol.get_blocks() {
-            let mut blocks = self.blocks.borrow_mut();
-            blocks.0 = new_blocks;
-            blocks.1 = true;
+            *self.blocks.borrow_mut() = new_blocks;
+            for s in &mut *self.surfaces.borrow_mut() {
+                s.blocks_need_update = true;
+            }
         }
         Ok(())
     }
 }
 
 impl StatusCmd {
-    pub fn new(cmd: &str, blocks: Rc<RefCell<(Vec<Block>, bool)>>) -> Result<Self> {
+    pub fn new(
+        cmd: &str,
+        blocks: Rc<RefCell<Vec<Block>>>,
+        surfaces: Rc<RefCell<Vec<Surface>>>,
+    ) -> Result<Self> {
         let mut child = Command::new("sh")
             .args(["-c", &format!("exec {cmd}")])
             .stdin(Stdio::piped())
@@ -60,6 +67,7 @@ impl StatusCmd {
                 input,
                 protocol: Protocol::Unknown,
                 blocks,
+                surfaces,
             })),
         })
     }
