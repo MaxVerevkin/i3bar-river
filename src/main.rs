@@ -1,3 +1,5 @@
+#![allow(clippy::derive_ord_xor_partial_ord)]
+
 #[macro_use]
 extern crate log;
 
@@ -628,14 +630,12 @@ fn render_blocks(
     // Progressively switch to short mode
     if offset_left + blocks_width > full_width {
         let mut heap = BinaryHeap::new();
-        for (name, delta) in &deltas {
-            heap.push((*delta as i32, *name));
-        }
-        while let Some((_, to_switch)) = heap.pop() {
-            let d = *deltas.get(to_switch).unwrap();
-            if d <= 0.0 {
-                break;
+        for (name, delta) in deltas {
+            if delta > 0.0 {
+                heap.push((OrdFloat(delta), name));
             }
+        }
+        while let Some((OrdFloat(delta), to_switch)) = heap.pop() {
             for (name, full, short) in &mut blocks_computed {
                 if *name == Some(to_switch) {
                     if let Some(short) = short {
@@ -643,7 +643,7 @@ fn render_blocks(
                     }
                 }
             }
-            blocks_width -= d;
+            blocks_width -= delta;
             if offset_left + blocks_width <= full_width {
                 break;
             }
@@ -682,5 +682,18 @@ fn render_blocks(
             }
             blocks_width -= w;
         }
+    }
+}
+
+#[derive(PartialEq, PartialOrd)]
+struct OrdFloat(f64);
+
+impl Eq for OrdFloat {}
+
+impl Ord for OrdFloat {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.0
+            .partial_cmp(&other.0)
+            .unwrap_or(std::cmp::Ordering::Less)
     }
 }
