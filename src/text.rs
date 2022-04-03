@@ -108,7 +108,7 @@ impl ComputedText {
         }
 
         context.save().unwrap();
-        context.translate(options.x_offset, 0.0);
+        context.translate(options.x_offset - 1.0, 0.0);
 
         // Set the width/height on the Pango layout so that it word-wraps/ellipises.
         let text_width = self.width - text.attr.padding_left - text.attr.padding_right;
@@ -119,13 +119,13 @@ impl ComputedText {
 
         if let Some(bg) = options.bg_color {
             bg.apply(context);
-            context.rectangle(0.0, 0.0, self.width, options.bar_height);
+            context.rectangle(0.0, 0.0, self.width + 1.0, options.bar_height);
             context.fill().unwrap();
         }
 
         options.fg_color.apply(context);
         context.translate(
-            text.attr.padding_left,
+            text.attr.padding_left + 1.0,
             (options.bar_height - self.height) * 0.5,
         );
         show_pango_layout(context, &layout);
