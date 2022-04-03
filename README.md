@@ -2,13 +2,7 @@
 
 This is a port of `i3bar` for [river](https://github.com/riverwm/river).
 
-## Warning
-
-It works on my machine™, but this program is in early stage of development.
-
 ## i3bar compatibility
-
-Full compatibility is desired, but right now not everything is implemented.
 
 I've tested [`i3status-rs`](https://github.com/greshake/i3status-rust), [`bumblebee-status`](https://github.com/tobi-wan-kenobi/bumblebee-status) and [`py3status`](https://github.com/ultrabug/py3status) and everything seems usable.
 
@@ -16,6 +10,13 @@ A list of things that are missing (for now):
 - `border[_top|_right|_bottom|_left]`
 - Click events lack some info (IDK if anyone actually relies on `x`, `y`, `width`, etc.)
 - Multiple seat support (river doesn't support this either, so it's fine for now)
+- HiDPI
+- Tray icons
+
+## Advantages
+
+- `river` support (obviously)
+- `short_text` switching is "progressive" (see https://github.com/i3/i3/issues/4113)
 
 ## Installation
 
