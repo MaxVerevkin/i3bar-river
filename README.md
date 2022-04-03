@@ -13,7 +13,6 @@ Full compatibility is desired, but right now not everything is implemented.
 I've tested [`i3status-rs`](https://github.com/greshake/i3status-rust), [`bumblebee-status`](https://github.com/tobi-wan-kenobi/bumblebee-status) and [`py3status`](https://github.com/ultrabug/py3status) and everything seems usable.
 
 A list of things that are missing (for now):
-- `short_text`
 - `border[_top|_right|_bottom|_left]`
 - Click events lack some info (IDK if anyone actually relies on `x`, `y`, `width`, etc.)
 - Multiple seat support (river doesn't support this either, so it's fine for now)

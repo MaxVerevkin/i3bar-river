@@ -21,6 +21,7 @@ use smithay_client_toolkit::{
 use pangocairo::cairo;
 
 use std::cell::{Cell, RefCell};
+use std::collections::{BinaryHeap, HashMap};
 use std::rc::Rc;
 
 mod button_manager;
@@ -538,56 +539,15 @@ impl Surface {
         }
 
         // Display the blocks
-        // TODO: handle short_text
-        let mut offset_right = 0.0;
-        self.blocks_btns.clear();
-        let mut first_block = true;
-        for block in self.blocks.borrow().iter().rev() {
-            if !first_block && block.separator && block.separator_block_width > 0 {
-                let w = block.separator_block_width as f64;
-                config.separator.apply(&cairo_ctx);
-                cairo_ctx.set_line_width(2.0);
-                cairo_ctx.move_to(width_f - offset_right - w * 0.5, height_f * 0.1);
-                cairo_ctx.line_to(width_f - offset_right - w * 0.5, height_f * 0.9);
-                cairo_ctx.stroke().unwrap();
-                offset_right += w;
-            }
-            let markup = block.markup.as_deref() == Some("pango");
-            let text = text::Text {
-                text: block.full_text.clone(),
-                attr: text::Attributes {
-                    font: config.font.clone(),
-                    padding_left: 0.0,
-                    padding_right: 0.0,
-                    min_width: match &block.min_width {
-                        Some(MinWidth::Pixels(p)) => Some(*p as f64),
-                        Some(MinWidth::Text(t)) => {
-                            Some(text::width_of(t, &cairo_ctx, markup, &config.font.0))
-                        }
-                        None => None,
-                    },
-                    align: block.align.unwrap_or_default(),
-                    markup,
-                },
-            };
-            let comp = text.compute(&cairo_ctx);
-            comp.render(
-                &cairo_ctx,
-                RenderOptions {
-                    x_offset: width_f - comp.width - offset_right,
-                    bar_height: height_f,
-                    fg_color: block.color.unwrap_or(config.color),
-                    bg_color: block.background,
-                },
-            );
-            offset_right += comp.width;
-            self.blocks_btns.push(
-                width_f - offset_right,
-                comp.width,
-                (block.name.clone(), block.instance.clone()),
-            );
-            first_block = false;
-        }
+        render_blocks(
+            &cairo_ctx,
+            &*config,
+            &*self.blocks.borrow(),
+            &mut self.blocks_btns,
+            offset_left,
+            width_f,
+            height_f,
+        );
         self.blocks_need_update = false;
 
         // Attach the buffer to the surface and mark the entire surface as damaged
@@ -605,5 +565,122 @@ impl Drop for Surface {
         self.layer_surface.destroy();
         self.surface.destroy();
         self.river_output_status.destroy();
+    }
+}
+
+fn render_blocks(
+    context: &cairo::Context,
+    config: &Config,
+    blocks: &[Block],
+    buttons: &mut ButtonManager<(Option<String>, Option<String>)>,
+    offset_left: f64,
+    full_width: f64,
+    full_height: f64,
+) {
+    let mut blocks_computed = Vec::with_capacity(blocks.len());
+    let mut blocks_width = 0.0;
+    let mut deltas = HashMap::<&str, f64>::new();
+    for (i, block) in blocks.iter().enumerate() {
+        let markup = block.markup.as_deref() == Some("pango");
+        let min_width = match &block.min_width {
+            Some(MinWidth::Pixels(p)) => Some(*p as f64),
+            Some(MinWidth::Text(t)) => Some(text::width_of(t, context, markup, &config.font.0)),
+            None => None,
+        };
+        let full_text = text::Text {
+            text: block.full_text.clone(),
+            attr: text::Attributes {
+                font: config.font.clone(),
+                padding_left: 0.0,
+                padding_right: 0.0,
+                min_width,
+                align: block.align.unwrap_or_default(),
+                markup,
+            },
+        }
+        .compute(context);
+        let short_text = block.short_text.clone().map(|short_text| {
+            text::Text {
+                text: short_text,
+                attr: text::Attributes {
+                    font: config.font.clone(),
+                    padding_left: 0.0,
+                    padding_right: 0.0,
+                    min_width,
+                    align: block.align.unwrap_or_default(),
+                    markup,
+                },
+            }
+            .compute(context)
+        });
+        blocks_width += full_text.width;
+        if i + 1 != blocks.len() {
+            blocks_width += block.separator_block_width as f64;
+        }
+        if let Some(short) = &short_text {
+            if let Some(name) = &block.name {
+                *deltas.entry(name).or_insert(0.0) += full_text.width - short.width;
+            }
+        }
+        blocks_computed.push((block.name.as_deref(), full_text, short_text));
+    }
+
+    // Progressively switch to short mode
+    if offset_left + blocks_width > full_width {
+        let mut heap = BinaryHeap::new();
+        for (name, delta) in &deltas {
+            heap.push((*delta as i32, *name));
+        }
+        while let Some((_, to_switch)) = heap.pop() {
+            let d = *deltas.get(to_switch).unwrap();
+            if d <= 0.0 {
+                break;
+            }
+            for (name, full, short) in &mut blocks_computed {
+                if *name == Some(to_switch) {
+                    if let Some(short) = short {
+                        std::mem::swap(full, short);
+                    }
+                }
+            }
+            blocks_width -= d;
+            if offset_left + blocks_width <= full_width {
+                break;
+            }
+        }
+    }
+
+    buttons.clear();
+    for (i, (block, computed)) in blocks
+        .iter()
+        .zip(blocks_computed.iter().map(|(_, full, _)| full))
+        .enumerate()
+    {
+        computed.render(
+            context,
+            RenderOptions {
+                x_offset: full_width - blocks_width,
+                bar_height: full_height,
+                fg_color: block.color.unwrap_or(config.color),
+                bg_color: block.background,
+            },
+        );
+        buttons.push(
+            full_width - blocks_width,
+            computed.width,
+            (block.name.clone(), block.instance.clone()),
+        );
+        blocks_width -= computed.width;
+        if i + 1 != blocks.len() && block.separator_block_width > 0 {
+            let w = block.separator_block_width as f64;
+            if block.separator {
+                config.separator.apply(context);
+                context.set_line_width(2.0);
+                context.move_to(full_width - blocks_width + w * 0.5, full_height * 0.1);
+                context.line_to(full_width - blocks_width + w * 0.5, full_height * 0.9);
+                context.stroke().unwrap();
+            }
+            blocks_width -= w;
+        }
     }
 }
