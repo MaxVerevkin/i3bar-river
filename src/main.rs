@@ -1,5 +1,3 @@
-#![allow(clippy::derive_ord_xor_partial_ord)]
-
 #[macro_use]
 extern crate log;
 
@@ -31,6 +29,7 @@ mod color;
 mod config;
 mod i3bar_protocol;
 mod lines_buffer;
+mod ord_adaptor;
 mod pointer_btn;
 mod river_protocols;
 mod status_cmd;
@@ -40,6 +39,7 @@ mod text;
 use button_manager::ButtonManager;
 use config::Config;
 use i3bar_protocol::{Block, MinWidth};
+use ord_adaptor::DefaultLess;
 use pointer_btn::PointerBtn;
 use river_protocols::zriver_command_callback_v1;
 use river_protocols::zriver_control_v1;
@@ -632,10 +632,10 @@ fn render_blocks(
         let mut heap = BinaryHeap::new();
         for (name, delta) in deltas {
             if delta > 0.0 {
-                heap.push((OrdFloat(delta), name));
+                heap.push((DefaultLess(delta), name));
             }
         }
-        while let Some((OrdFloat(delta), to_switch)) = heap.pop() {
+        while let Some((DefaultLess(delta), to_switch)) = heap.pop() {
             for (name, full, short) in &mut blocks_computed {
                 if *name == Some(to_switch) {
                     if let Some(short) = short {
@@ -682,18 +682,5 @@ fn render_blocks(
             }
             blocks_width -= w;
         }
-    }
-}
-
-#[derive(PartialEq, PartialOrd)]
-struct OrdFloat(f64);
-
-impl Eq for OrdFloat {}
-
-impl Ord for OrdFloat {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.0
-            .partial_cmp(&other.0)
-            .unwrap_or(std::cmp::Ordering::Less)
     }
 }
