@@ -1,13 +1,12 @@
 use crate::Surface;
 use std::cell::RefCell;
 use std::io::Result;
-use std::io::Write;
+use std::io::{BufRead, BufReader, Write};
 use std::os::unix::prelude::{AsRawFd, RawFd};
-use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
+use std::process::{ChildStdin, ChildStdout, Command, Stdio};
 use std::rc::Rc;
 
 use crate::i3bar_protocol::{Block, Event, Protocol};
-use crate::lines_buffer::LinesBuffer;
 use crate::pointer_btn::PointerBtn;
 
 #[derive(Clone)]
@@ -16,9 +15,7 @@ pub struct StatusCmd {
 }
 
 struct Inner {
-    #[allow(dead_code)]
-    child: Child,
-    output: LinesBuffer<ChildStdout>,
+    output: BufReader<ChildStdout>,
     input: ChildStdin,
     protocol: Protocol,
     blocks: Rc<RefCell<Vec<Block>>>,
@@ -27,16 +24,16 @@ struct Inner {
 
 impl AsRawFd for StatusCmd {
     fn as_raw_fd(&self) -> RawFd {
-        self.inner.borrow().output.inner().as_raw_fd()
+        self.inner.borrow().output.get_ref().as_raw_fd()
     }
 }
 
 impl Inner {
     pub fn notify_available(&mut self) -> Result<()> {
-        self.output.fill_buf()?;
-        for line in &mut self.output {
-            self.protocol.process_line(line)?;
-        }
+        let buf = self.output.fill_buf()?;
+        self.protocol.process_new_bytes(buf)?;
+        let consumed = buf.len();
+        self.output.consume(consumed);
         if let Some(new_blocks) = self.protocol.get_blocks() {
             *self.blocks.borrow_mut() = new_blocks;
             for s in &mut *self.surfaces.borrow_mut() {
@@ -58,11 +55,10 @@ impl StatusCmd {
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .spawn()?;
-        let output = LinesBuffer::new(child.stdout.take().unwrap());
+        let output = BufReader::new(child.stdout.take().unwrap());
         let input = child.stdin.take().unwrap();
         Ok(Self {
             inner: Rc::new(RefCell::new(Inner {
-                child,
                 output,
                 input,
                 protocol: Protocol::Unknown,

@@ -1,9 +1,9 @@
 use crate::color::Color;
 use crate::pointer_btn::PointerBtn;
 use crate::text::Align;
+use crate::utils::{de_first_json, de_last_json, last_line};
 use serde::Deserialize;
 use serde::Serialize;
-use serde_json::{Deserializer, Result as SerdeResult};
 use std::io::{Error, ErrorKind, Result};
 
 #[derive(Deserialize, Default)]
@@ -80,63 +80,104 @@ pub struct JsonHeader {
 
 pub enum Protocol {
     Unknown,
-    PlainText(Option<String>),
+    PlainText {
+        line: Option<String>,
+        buf: Vec<u8>,
+    },
     JsonNotStarted(JsonHeader),
-    Json(JsonHeader, Option<Vec<Block>>, Option<String>),
+    Json {
+        header: JsonHeader,
+        blocks: Option<Vec<Block>>,
+        buf: Vec<u8>,
+    },
 }
 
 impl Protocol {
-    pub fn process_line(&mut self, line: String) -> Result<()> {
+    pub fn process_new_bytes(&mut self, bytes: &[u8]) -> Result<()> {
         macro_rules! invalid {
-            ($fmt:expr) => {
-                return Err(Error::new(ErrorKind::InvalidData, format!($fmt)))
+            ($fmt:expr $(,$t:expr)*) => {
+                return Err(Error::new(ErrorKind::InvalidData, format!($fmt $(,$t)*)))
             };
         }
 
         match self {
             Self::Unknown => {
-                if let Ok(header) = serde_json::from_str::<JsonHeader>(&line) {
+                if let Ok((Some(header), rem)) = de_first_json::<JsonHeader>(bytes) {
                     if header.version == 1 {
-                        *self = Protocol::JsonNotStarted(header);
-                        return Ok(());
+                        *self = Self::JsonNotStarted(header);
+                        return self.process_new_bytes(rem);
                     }
                 }
-                *self = Self::PlainText(Some(line))
+                *self = Self::PlainText {
+                    line: None,
+                    buf: Vec::new(),
+                };
+                return self.process_new_bytes(bytes);
             }
-            Self::PlainText(s) => *s = Some(line),
+            Self::PlainText { line, buf } => {
+                if buf.is_empty() {
+                    if let Some((new_line, rem)) = last_line(bytes) {
+                        *line = Some(String::from_utf8_lossy(new_line).into());
+                        buf.extend_from_slice(rem);
+                    } else {
+                        buf.extend_from_slice(bytes);
+                    }
+                } else {
+                    buf.extend_from_slice(bytes);
+                    if let Some((new_line, rem)) = last_line(buf) {
+                        *line = Some(String::from_utf8_lossy(new_line).into());
+                        let used = buf.len() - rem.len();
+                        buf.drain(..used);
+                    }
+                }
+            }
             Self::JsonNotStarted(header) => {
-                let line = line.trim_start();
-                if !line.is_empty() {
-                    if !line.starts_with('[') {
-                        invalid!("Expected '['");
+                let mut bytes = bytes;
+                while bytes.first().map_or(false, |&x| x == b' ' || x == b'\n') {
+                    bytes = &bytes[1..];
+                }
+                match bytes.first() {
+                    Some(b'[') => {
+                        *self = Self::Json {
+                            header: *header,
+                            blocks: None,
+                            buf: Vec::new(),
+                        };
+                        return self.process_new_bytes(&bytes[1..]);
                     }
-                    *self = Self::Json(*header, None, None);
-                    self.process_line(line[1..].to_owned())?;
+                    Some(other) => invalid!("invalid json: expected '[', got '{}'", *other as char),
+                    _ => (),
                 }
             }
-            Self::Json(_, blocks, start_orig) => match start_orig {
-                Some(start) => {
-                    start.push_str(&line);
-                    match de_last::<Vec<Block>>(start) {
-                        Err(e) => invalid!("Invalid JSON: {e}"),
-                        Ok((rem, new_blocks)) => {
-                            *start_orig = (!rem.is_empty()).then(|| rem.to_owned());
+            Self::Json {
+                header: _,
+                blocks,
+                buf,
+            } => {
+                if buf.is_empty() {
+                    match de_last_json(bytes) {
+                        Err(e) => invalid!("invalid json: {e}"),
+                        Ok((new_blocks, rem)) => {
                             if let Some(new_blocks) = new_blocks {
                                 *blocks = Some(new_blocks);
                             }
+                            buf.extend_from_slice(rem);
+                        }
+                    }
+                } else {
+                    buf.extend_from_slice(bytes);
+                    match de_last_json(buf) {
+                        Err(e) => invalid!("invalid json: {e}"),
+                        Ok((new_blocks, rem)) => {
+                            if let Some(new_blocks) = new_blocks {
+                                *blocks = Some(new_blocks);
+                            }
+                            let used = buf.len() - rem.len();
+                            buf.drain(..used);
                         }
                     }
                 }
-                None => match de_last::<Vec<Block>>(&line) {
-                    Err(e) => invalid!("Invalid JSON: {e}"),
-                    Ok((rem, new_blocks)) => {
-                        *start_orig = (!rem.is_empty()).then(|| rem.to_owned());
-                        if let Some(new_blocks) = new_blocks {
-                            *blocks = Some(new_blocks);
-                        }
-                    }
-                },
-            },
+            }
         }
         Ok(())
     }
@@ -144,62 +185,20 @@ impl Protocol {
     pub fn get_blocks(&mut self) -> Option<Vec<Block>> {
         match self {
             Self::Unknown => None,
-            Self::PlainText(text) => Some(vec![Block {
-                full_text: text.take()?,
+            Self::PlainText { line, .. } => Some(vec![Block {
+                full_text: line.take()?,
                 ..Default::default()
             }]),
             Self::JsonNotStarted(_) => None,
-            Self::Json(_, blocks, _) => blocks.take(),
+            Self::Json { blocks, .. } => blocks.take(),
         }
     }
 
     pub fn supports_clicks(&self) -> bool {
         match self {
             Self::JsonNotStarted(h) => h.click_events,
-            Self::Json(h, _, _) => h.click_events,
+            Self::Json { header, .. } => header.click_events,
             _ => false,
         }
-    }
-}
-
-/// Deserialize the last complete object. Returns (`remaining`, `object`). See tests for examples.
-fn de_last<'a, T: Deserialize<'a>>(mut s: &'a str) -> SerdeResult<(&'a str, Option<T>)> {
-    let mut last = None;
-    let mut tmp;
-    loop {
-        (s, tmp) = de_once(s)?;
-        last = match tmp {
-            Some(obj) => Some(obj),
-            None => return Ok((s, last)),
-        };
-    }
-}
-
-/// Deserialize the first complete object. Returns (`remaining`, `object`).
-fn de_once<'a, T: Deserialize<'a>>(s: &'a str) -> SerdeResult<(&'a str, Option<T>)> {
-    let s = s.trim_start_matches(|x: char| x.is_ascii_whitespace() || x == ',');
-    let mut de = Deserializer::from_str(s).into_iter();
-    match de.next() {
-        Some(Ok(obj)) => Ok((&s[de.byte_offset()..], Some(obj))),
-        Some(Err(e)) if e.is_eof() => Ok((&s[de.byte_offset()..], None)),
-        Some(Err(e)) => Err(e),
-        None => Ok((&s[de.byte_offset()..], None)),
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn streaming_json() {
-        let s = ",[2], [3], [4, 3],[32][3] ";
-        assert_eq!(de_last::<Vec<u8>>(s).unwrap(), ("", Some(vec![3])));
-
-        let s = ",[2], [3], [4, 3],[32][3] [2, 4";
-        assert_eq!(de_last::<Vec<u8>>(s).unwrap(), ("[2, 4", Some(vec![3])));
-
-        let s = ",[2], [3], [4, 3],[32] invalid";
-        assert!(de_last::<Vec<u8>>(s).is_err());
     }
 }

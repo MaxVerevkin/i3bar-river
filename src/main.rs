@@ -28,13 +28,13 @@ mod button_manager;
 mod color;
 mod config;
 mod i3bar_protocol;
-mod lines_buffer;
 mod ord_adaptor;
 mod pointer_btn;
 mod river_protocols;
 mod status_cmd;
 mod tags;
 mod text;
+mod utils;
 
 use button_manager::ButtonManager;
 use config::Config;
@@ -247,7 +247,7 @@ fn main() {
                     readable: true,
                     writable: false,
                 },
-                calloop::Mode::Edge,
+                calloop::Mode::Level,
             ),
             move |ready, cmd, _| {
                 info!("status command update");
