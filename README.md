@@ -40,7 +40,7 @@ riverctl spawn i3bar-river
 
 The configuration file should be stored in `$XDG_CONFIG_HOME/i3bar-river/config.toml` or `~/.config/i3bar-river/config.toml`.
 
-Example configuration (everything except for `command` is optional):
+Example configuration (every parameter is optional):
 
 ```toml
 background = "#282828"
@@ -54,5 +54,5 @@ tag_urgent_fg = "#282828"
 tag_urgent_bg = "#cc241d"
 font = "JetBrainsMono Nerd Font 10"
 height = 20
-command = "~/i3status-rust/target/debug/i3status-rs"
+command = "i3status-rs"
 ```

@@ -1,97 +1,78 @@
-use crate::Surface;
 use std::cell::RefCell;
-use std::io::Result;
-use std::io::{BufRead, BufReader, Write};
-use std::os::unix::prelude::{AsRawFd, RawFd};
-use std::process::{ChildStdin, ChildStdout, Command, Stdio};
+use std::io::{BufRead, BufReader, Result, Write};
+use std::os::unix::prelude::AsRawFd;
+use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 use std::rc::Rc;
 
+use smithay_client_toolkit::reexports::calloop::{self, LoopHandle};
+
 use crate::i3bar_protocol::{Block, Event, Protocol};
-use crate::pointer_btn::PointerBtn;
+use crate::BarState;
 
-#[derive(Clone)]
 pub struct StatusCmd {
-    inner: Rc<RefCell<Inner>>,
-}
-
-struct Inner {
+    child: Child,
     output: BufReader<ChildStdout>,
     input: ChildStdin,
     protocol: Protocol,
-    blocks: Rc<RefCell<Vec<Block>>>,
-    surfaces: Rc<RefCell<Vec<Surface>>>,
-}
-
-impl AsRawFd for StatusCmd {
-    fn as_raw_fd(&self) -> RawFd {
-        self.inner.borrow().output.get_ref().as_raw_fd()
-    }
-}
-
-impl Inner {
-    pub fn notify_available(&mut self) -> Result<()> {
-        let buf = self.output.fill_buf()?;
-        self.protocol.process_new_bytes(buf)?;
-        let consumed = buf.len();
-        self.output.consume(consumed);
-        if let Some(new_blocks) = self.protocol.get_blocks() {
-            *self.blocks.borrow_mut() = new_blocks;
-            for s in &mut *self.surfaces.borrow_mut() {
-                s.blocks_need_update = true;
-            }
-        }
-        Ok(())
-    }
 }
 
 impl StatusCmd {
-    pub fn new(
-        cmd: &str,
-        blocks: Rc<RefCell<Vec<Block>>>,
-        surfaces: Rc<RefCell<Vec<Surface>>>,
-    ) -> Result<Self> {
+    pub fn new(cmd: &str) -> Result<Self> {
         let mut child = Command::new("sh")
             .args(["-c", &format!("exec {cmd}")])
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .spawn()?;
-        let output = BufReader::new(child.stdout.take().unwrap());
+        let output = child.stdout.take().unwrap();
         let input = child.stdin.take().unwrap();
         Ok(Self {
-            inner: Rc::new(RefCell::new(Inner {
-                output,
-                input,
-                protocol: Protocol::Unknown,
-                blocks,
-                surfaces,
-            })),
+            child,
+            output: BufReader::new(output),
+            input,
+            protocol: Protocol::Unknown,
         })
     }
 
-    pub fn notify_available(&mut self) -> Result<()> {
-        self.inner.borrow_mut().notify_available()
+    pub fn notify_available(&mut self) -> Result<Option<Vec<Block>>> {
+        let buf = self.output.fill_buf()?;
+        self.protocol.process_new_bytes(buf)?;
+        let consumed = buf.len();
+        self.output.consume(consumed);
+        Ok(self.protocol.get_blocks())
     }
 
-    pub fn send_click_event(
-        &mut self,
-        button: PointerBtn,
-        name: Option<&str>,
-        instance: Option<&str>,
-    ) -> Result<()> {
-        let mut inner = self.inner.borrow_mut();
-        if inner.protocol.supports_clicks() {
-            writeln!(
-                inner.input,
-                "{}",
-                serde_json::to_string(&Event {
-                    name,
-                    instance,
-                    button,
-                    ..Default::default()
-                })
-                .unwrap()
-            )?;
+    pub fn send_click_event(&mut self, event: &Event) -> Result<()> {
+        if self.protocol.supports_clicks() {
+            writeln!(self.input, "{}", serde_json::to_string(event).unwrap(),)?;
         }
         Ok(())
+    }
+
+    pub fn quick_insert(&self, handle: LoopHandle<()>, bar_state: Rc<RefCell<BarState>>) {
+        handle
+            .insert_source(
+                calloop::generic::Generic::new(
+                    self.output.get_ref().as_raw_fd(),
+                    calloop::Interest {
+                        readable: true,
+                        writable: false,
+                    },
+                    calloop::Mode::Level,
+                ),
+                move |ready, _, _| {
+                    if ready.readable {
+                        bar_state.borrow_mut().notify_available()?;
+                        Ok(calloop::PostAction::Continue)
+                    } else {
+                        let mut bar_state = bar_state.borrow_mut();
+                        bar_state.set_error("error reading from status command");
+                        if let Some(mut child) = bar_state.status_cmd.take() {
+                            let _ = child.child.kill();
+                        }
+                        Ok(calloop::PostAction::Remove)
+                    }
+                },
+            )
+            .expect("failed to inser calloop source");
     }
 }
