@@ -4,6 +4,7 @@ use std::io;
 use std::rc::Rc;
 
 use smithay_client_toolkit::{
+    environment::Environment,
     reexports::{
         client::protocol::{wl_output::WlOutput, wl_seat::WlSeat, wl_shm, wl_surface::WlSurface},
         client::{Attached, Main},
@@ -29,6 +30,7 @@ use crate::status_cmd::StatusCmd;
 use crate::tags::{compute_tag_label, TagState, TagsInfo};
 use crate::text;
 use crate::text::{ComputedText, RenderOptions};
+use crate::Env;
 
 #[derive(PartialEq, Copy, Clone)]
 enum RenderEvent {
@@ -40,14 +42,16 @@ enum RenderEvent {
 pub struct BarState {
     pub status_cmd: Option<StatusCmd>,
     config: Rc<RefCell<Config>>,
-    is_error: bool,
     blocks: Vec<Block>,
     blocks_updated: bool,
     surfaces: Vec<Surface>,
+    layer_shell: Attached<zwlr_layer_shell_v1::ZwlrLayerShellV1>,
+    river_status: Option<Attached<zriver_status_manager_v1::ZriverStatusManagerV1>>,
+    river_control: Option<Attached<zriver_control_v1::ZriverControlV1>>,
 }
 
 impl BarState {
-    pub fn new() -> Self {
+    pub fn new(env: &Environment<Env>) -> Self {
         let mut error = Ok(());
 
         let config = Config::new()
@@ -66,10 +70,12 @@ impl BarState {
         let mut s = Self {
             status_cmd,
             config: Rc::new(RefCell::new(config)),
-            is_error: false,
             blocks: Vec::new(),
             blocks_updated: false,
             surfaces: Default::default(),
+            layer_shell: env.require_global::<zwlr_layer_shell_v1::ZwlrLayerShellV1>(),
+            river_status: env.get_global::<zriver_status_manager_v1::ZriverStatusManagerV1>(),
+            river_control: env.get_global::<zriver_control_v1::ZriverControlV1>(),
         };
 
         if let Err(e) = error {
@@ -85,7 +91,6 @@ impl BarState {
     }
 
     pub fn set_error(&mut self, error: impl Into<String>) {
-        self.is_error = true;
         self.set_blocks(vec![Block {
             full_text: error.into(),
             ..Default::default()
@@ -124,18 +129,14 @@ impl BarState {
         }
     }
 
-    #[allow(clippy::too_many_arguments)]
     pub fn add_surface(
         &mut self,
         output: &WlOutput,
         output_id: u32,
         surface: WlSurface,
-        layer_shell: &Attached<zwlr_layer_shell_v1::ZwlrLayerShellV1>,
-        river_status: &Attached<zriver_status_manager_v1::ZriverStatusManagerV1>,
-        river_control: Attached<zriver_control_v1::ZriverControlV1>,
         pool: AutoMemPool,
     ) {
-        let layer_surface = layer_shell.get_layer_surface(
+        let layer_surface = self.layer_shell.get_layer_surface(
             &surface,
             Some(output),
             zwlr_layer_shell_v1::Layer::Top,
@@ -176,24 +177,29 @@ impl BarState {
         // Commit so that the server will send a configure event
         surface.commit();
 
-        let river_output_status = river_status.get_river_output_status(output);
-        let tags_info = Rc::new(RefCell::new(TagsInfo::default()));
-        let tags_info_handle = Rc::clone(&tags_info);
-        let next_render_event_handle = Rc::clone(&next_render_event);
-        river_output_status.quick_assign(move |_, event, _| {
-            match event {
-                zriver_output_status_v1::Event::FocusedTags { tags } => {
-                    tags_info_handle.borrow_mut().focused = tags;
+        let (river_output_status, tags_info) = if let Some(river_status) = &self.river_status {
+            let tags_info = Rc::new(RefCell::new(TagsInfo::default()));
+            let tags_info_handle = Rc::clone(&tags_info);
+            let next_render_event_handle = Rc::clone(&next_render_event);
+            let river_output_status = river_status.get_river_output_status(output);
+            river_output_status.quick_assign(move |_, event, _| {
+                match event {
+                    zriver_output_status_v1::Event::FocusedTags { tags } => {
+                        tags_info_handle.borrow_mut().focused = tags;
+                    }
+                    zriver_output_status_v1::Event::UrgentTags { tags } => {
+                        tags_info_handle.borrow_mut().urgent = tags;
+                    }
+                    _ => (),
                 }
-                zriver_output_status_v1::Event::UrgentTags { tags } => {
-                    tags_info_handle.borrow_mut().urgent = tags;
+                if next_render_event_handle.get().is_none() {
+                    next_render_event_handle.set(Some(RenderEvent::TagsUpdated));
                 }
-                _ => (),
-            }
-            if next_render_event_handle.get().is_none() {
-                next_render_event_handle.set(Some(RenderEvent::TagsUpdated));
-            }
-        });
+            });
+            (Some(river_output_status), Some(tags_info))
+        } else {
+            (None, None)
+        };
 
         self.surfaces.push(Surface {
             output_id,
@@ -204,7 +210,7 @@ impl BarState {
             dimensions: (0, 0),
             config: self.config.clone(),
             river_output_status,
-            river_control,
+            river_control: self.river_control.clone(),
             tags_info,
             tags_computed: Vec::with_capacity(9),
             tags_btns: Default::default(),
@@ -236,10 +242,10 @@ pub struct Surface {
     dimensions: (u32, u32),
     config: Rc<RefCell<Config>>,
     // river stuff
-    river_output_status: Main<zriver_output_status_v1::ZriverOutputStatusV1>,
-    river_control: Attached<zriver_control_v1::ZriverControlV1>,
+    river_output_status: Option<Main<zriver_output_status_v1::ZriverOutputStatusV1>>,
+    river_control: Option<Attached<zriver_control_v1::ZriverControlV1>>,
     // tags
-    tags_info: Rc<RefCell<TagsInfo>>,
+    tags_info: Option<Rc<RefCell<TagsInfo>>>,
     tags_computed: Vec<ComputedText>,
     // buttons
     tags_btns: ButtonManager,
@@ -280,15 +286,16 @@ impl Surface {
         x: f64,
         _y: f64,
     ) -> Option<i3bar_protocol::Event> {
-        if let Some(id) = self.tags_btns.click(x) {
+        if let Some((id, river_control)) = self.tags_btns.click(x).zip(self.river_control.as_ref())
+        {
             let cmd = match button {
                 PointerBtn::Left => "set-focused-tags",
                 PointerBtn::Right => "toggle-focused-tags",
                 _ => return None,
             };
-            self.river_control.add_argument(cmd.into());
-            self.river_control.add_argument((1u32 << id).to_string());
-            let result = self.river_control.run_command(seat);
+            river_control.add_argument(cmd.into());
+            river_control.add_argument((1u32 << id).to_string());
+            let result = river_control.run_command(seat);
             result.quick_assign(|_, event, _| match event {
                 zriver_command_callback_v1::Event::Success { output } => {
                     info!("River cmd output: '{output}'");
@@ -342,40 +349,40 @@ impl Surface {
         config.background.apply(&cairo_ctx);
         cairo_ctx.paint().expect("cairo paint");
 
-        // Compute tags
-        if self.tags_computed.is_empty() {
-            let mut x_offset = 0.0;
-            //  TODO make configurable
-            for (id, text) in ["1", "2", "3", "4", "5", "6", "7", "8", "9"]
-                .iter()
-                .enumerate()
-            {
-                let tag = compute_tag_label(text.to_string(), config.font.clone(), &cairo_ctx);
-                self.tags_btns.push(x_offset, tag.width, id);
-                x_offset += tag.width;
-                self.tags_computed.push(tag);
-            }
-        }
-
         // Display tags
         let mut offset_left = 0.0;
-        let tags_info = self.tags_info.borrow();
-        for (i, label) in self.tags_computed.iter().enumerate() {
-            let (bg, fg) = match tags_info.get_state(i) {
-                TagState::Focused => (config.tag_focused_bg, config.tag_focused_fg),
-                TagState::Inactive => (config.tag_bg, config.tag_fg),
-                TagState::Urgent => (config.tag_urgent_bg, config.tag_urgent_fg),
-            };
-            label.render(
-                &cairo_ctx,
-                RenderOptions {
-                    x_offset: offset_left,
-                    bar_height: height_f,
-                    fg_color: fg,
-                    bg_color: Some(bg),
-                },
-            );
-            offset_left += label.width;
+        if let Some(tags_info) = &self.tags_info {
+            if self.tags_computed.is_empty() {
+                let mut x_offset = 0.0;
+                //  TODO make configurable
+                for (id, text) in ["1", "2", "3", "4", "5", "6", "7", "8", "9"]
+                    .iter()
+                    .enumerate()
+                {
+                    let tag = compute_tag_label(text.to_string(), config.font.clone(), &cairo_ctx);
+                    self.tags_btns.push(x_offset, tag.width, id);
+                    x_offset += tag.width;
+                    self.tags_computed.push(tag);
+                }
+            }
+            let tags_info = tags_info.borrow();
+            for (i, label) in self.tags_computed.iter().enumerate() {
+                let (bg, fg) = match tags_info.get_state(i) {
+                    TagState::Focused => (config.tag_focused_bg, config.tag_focused_fg),
+                    TagState::Inactive => (config.tag_bg, config.tag_fg),
+                    TagState::Urgent => (config.tag_urgent_bg, config.tag_urgent_fg),
+                };
+                label.render(
+                    &cairo_ctx,
+                    RenderOptions {
+                        x_offset: offset_left,
+                        bar_height: height_f,
+                        fg_color: fg,
+                        bg_color: Some(bg),
+                    },
+                );
+                offset_left += label.width;
+            }
         }
 
         // Display the blocks
@@ -403,7 +410,9 @@ impl Drop for Surface {
     fn drop(&mut self) {
         self.layer_surface.destroy();
         self.surface.destroy();
-        self.river_output_status.destroy();
+        if let Some(ros) = &self.river_output_status {
+            ros.destroy();
+        }
     }
 }
 

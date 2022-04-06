@@ -63,11 +63,7 @@ fn main() {
     )
     .expect("Initial roundtrip failed!");
 
-    let bar_state = Rc::new(RefCell::new(BarState::new()));
-
-    let layer_shell = env.require_global::<zwlr_layer_shell_v1::ZwlrLayerShellV1>();
-    let river_status = env.require_global::<zriver_status_manager_v1::ZriverStatusManagerV1>();
-    let river_control = env.require_global::<zriver_control_v1::ZriverControlV1>();
+    let bar_state = Rc::new(RefCell::new(BarState::new(&env)));
 
     let env_handle = env.clone();
     let bar_state_handle = Rc::clone(&bar_state);
@@ -82,15 +78,9 @@ fn main() {
             let pool = env_handle
                 .create_auto_pool()
                 .expect("Failed to create a memory pool!");
-            bar_state_handle.borrow_mut().add_surface(
-                &output,
-                info.id,
-                surface,
-                &layer_shell,
-                &river_status,
-                river_control.clone(),
-                pool,
-            );
+            bar_state_handle
+                .borrow_mut()
+                .add_surface(&output, info.id, surface, pool);
         }
     };
 
@@ -109,7 +99,7 @@ fn main() {
     // Right now river only supports one seat: default
     for seat in env.get_all_seats() {
         sctk::seat::with_seat_data(&seat, |seat_data| {
-            if seat_data.has_pointer && !seat_data.defunct && seat_data.name == "default" {
+            if seat_data.has_pointer && !seat_data.defunct {
                 let pointer = seat.get_pointer();
                 let bar_state_handle = bar_state.clone();
                 let seat = seat.clone();
