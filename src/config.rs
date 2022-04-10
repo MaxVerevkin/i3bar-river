@@ -23,14 +23,18 @@ pub struct Config {
     // font and size
     pub font: Font,
     pub height: u32,
+    pub separator_width: f64,
+    pub tags_r: f64,
+    pub blocks_r: f64,
+    pub blocks_overlap: f64,
     // command
     pub command: Option<String>,
 }
 
 impl Default for Config {
     fn default() -> Self {
-        // A kind of gruvbox theme
         Self {
+            // A kind of gruvbox theme
             background: Color::from_rgba_hex(0x282828ff),
             color: Color::from_rgba_hex(0xffffffff),
             separator: Color::from_rgba_hex(0x9a8a62ff),
@@ -42,6 +46,10 @@ impl Default for Config {
             tag_urgent_bg: Color::from_rgba_hex(0xcc241dff),
             font: Font::new("monospace 10"),
             height: 24,
+            separator_width: 2.0,
+            tags_r: 0.0,
+            blocks_r: 0.0,
+            blocks_overlap: 0.0,
             command: None,
         }
     }

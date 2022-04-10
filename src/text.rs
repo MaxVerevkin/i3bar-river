@@ -2,6 +2,8 @@ use crate::color::Color;
 use pango::{EllipsizeMode, FontDescription};
 use pangocairo::{cairo, pango};
 use serde::Deserialize;
+use std::f64::consts::{FRAC_PI_2, PI, TAU};
+use std::ops::Deref;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct RenderOptions {
@@ -9,6 +11,9 @@ pub struct RenderOptions {
     pub bar_height: f64,
     pub fg_color: Color,
     pub bg_color: Option<Color>,
+    pub r_left: f64,
+    pub r_right: f64,
+    pub overlap: f64,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -96,6 +101,14 @@ pub struct ComputedText {
     pub height: f64,
 }
 
+impl Deref for ComputedText {
+    type Target = str;
+
+    fn deref(&self) -> &Self::Target {
+        &self.text.text
+    }
+}
+
 impl ComputedText {
     pub fn render(&self, context: &cairo::Context, options: RenderOptions) {
         let text = &self.text;
@@ -108,7 +121,7 @@ impl ComputedText {
         }
 
         context.save().unwrap();
-        context.translate(options.x_offset - 1.0, 0.0);
+        context.translate(options.x_offset - options.overlap, 0.0);
 
         // Set the width/height on the Pango layout so that it word-wraps/ellipises.
         let text_width = self.width - text.attr.padding_left - text.attr.padding_right;
@@ -117,19 +130,49 @@ impl ComputedText {
         layout.set_width(text_width as i32 * pango::SCALE);
         layout.set_height(text_height as i32 * pango::SCALE);
 
+        // Draw background
         if let Some(bg) = options.bg_color {
             bg.apply(context);
-            context.rectangle(0.0, 0.0, self.width + 1.0, options.bar_height);
+            rounded_rectangle(
+                context,
+                0.0,
+                0.0,
+                self.width + options.overlap,
+                options.bar_height,
+                options.r_left,
+                options.r_right,
+            );
             context.fill().unwrap();
         }
 
         options.fg_color.apply(context);
         context.translate(
-            text.attr.padding_left + 1.0,
+            text.attr.padding_left + options.overlap,
             (options.bar_height - self.height) * 0.5,
         );
         show_pango_layout(context, &layout);
         context.restore().unwrap();
+    }
+}
+
+fn rounded_rectangle(
+    context: &cairo::Context,
+    x: f64,
+    y: f64,
+    w: f64,
+    h: f64,
+    r_left: f64,
+    r_right: f64,
+) {
+    if r_left > 0.0 || r_right > 0.0 {
+        context.new_sub_path();
+        context.arc(x + r_left, y + r_left, r_left, PI, 3.0 * FRAC_PI_2);
+        context.arc(x + w - r_right, y + r_right, r_right, 3.0 * FRAC_PI_2, TAU);
+        context.arc(x + w - r_right, y + h - r_right, r_right, 0.0, FRAC_PI_2);
+        context.arc(x + r_left, y + h - r_left, r_left, FRAC_PI_2, PI);
+        context.close_path();
+    } else {
+        context.rectangle(x, y, w, h);
     }
 }
 

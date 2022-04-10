@@ -1,5 +1,5 @@
 use std::cell::{Cell, RefCell};
-use std::collections::{BinaryHeap, HashMap};
+use std::collections::BinaryHeap;
 use std::io;
 use std::rc::Rc;
 
@@ -43,6 +43,7 @@ pub struct BarState {
     pub status_cmd: Option<StatusCmd>,
     config: Rc<RefCell<Config>>,
     blocks: Vec<Block>,
+    blocks_cache: Vec<ComputedBlock>,
     blocks_updated: bool,
     surfaces: Vec<Surface>,
     layer_shell: Attached<zwlr_layer_shell_v1::ZwlrLayerShellV1>,
@@ -71,6 +72,7 @@ impl BarState {
             status_cmd,
             config: Rc::new(RefCell::new(config)),
             blocks: Vec::new(),
+            blocks_cache: Vec::new(),
             blocks_updated: false,
             surfaces: Default::default(),
             layer_shell: env.require_global::<zwlr_layer_shell_v1::ZwlrLayerShellV1>(),
@@ -223,7 +225,11 @@ impl BarState {
         // https://github.com/rust-lang/rust/issues/43244
         let mut i = 0;
         while i != self.surfaces.len() {
-            if self.surfaces[i].handle_events(&self.blocks, self.blocks_updated) {
+            if self.surfaces[i].handle_events(
+                &self.blocks,
+                &mut self.blocks_cache,
+                self.blocks_updated,
+            ) {
                 self.surfaces.remove(i);
             } else {
                 i += 1;
@@ -255,25 +261,30 @@ pub struct Surface {
 impl Surface {
     /// Handles any events that have occurred since the last call, redrawing if needed.
     /// Returns true if the surface should be dropped.
-    fn handle_events(&mut self, blocks: &[Block], blocks_updated: bool) -> bool {
+    fn handle_events(
+        &mut self,
+        blocks: &[Block],
+        blocks_cache: &mut Vec<ComputedBlock>,
+        blocks_updated: bool,
+    ) -> bool {
         match self.next_render_event.take() {
             Some(RenderEvent::Closed) => return true,
             Some(RenderEvent::Configure { width, height }) => {
                 if self.dimensions != (width, height) {
                     self.dimensions = (width, height);
                     self.layer_surface.set_exclusive_zone(height as _);
-                    self.draw(blocks);
+                    self.draw(blocks, blocks_cache);
                     return false;
                 }
             }
             Some(RenderEvent::TagsUpdated) => {
-                self.draw(blocks);
+                self.draw(blocks, blocks_cache);
                 return false;
             }
             _ => (),
         }
         if blocks_updated {
-            self.draw(blocks);
+            self.draw(blocks, blocks_cache);
             return false;
         }
         false
@@ -315,7 +326,7 @@ impl Surface {
         None
     }
 
-    fn draw(&mut self, blocks: &[Block]) {
+    fn draw(&mut self, blocks: &[Block], blocks_cache: &mut Vec<ComputedBlock>) {
         let config = self.config.borrow();
 
         let stride = 4 * self.dimensions.0 as i32;
@@ -367,7 +378,8 @@ impl Surface {
             }
             let tags_info = tags_info.borrow();
             for (i, label) in self.tags_computed.iter().enumerate() {
-                let (bg, fg) = match tags_info.get_state(i) {
+                let state = tags_info.get_state(i);
+                let (bg, fg) = match state {
                     TagState::Focused => (config.tag_focused_bg, config.tag_focused_fg),
                     TagState::Inactive => (config.tag_bg, config.tag_fg),
                     TagState::Urgent => (config.tag_urgent_bg, config.tag_urgent_fg),
@@ -379,6 +391,17 @@ impl Surface {
                         bar_height: height_f,
                         fg_color: fg,
                         bg_color: Some(bg),
+                        r_left: if i == 0 || tags_info.get_state(i.saturating_sub(1)) != state {
+                            config.tags_r
+                        } else {
+                            0.0
+                        },
+                        r_right: if i == 8 || tags_info.get_state(i + 1) != state {
+                            config.tags_r
+                        } else {
+                            0.0
+                        },
+                        overlap: 0.0,
                     },
                 );
                 offset_left += label.width;
@@ -390,6 +413,7 @@ impl Surface {
             &cairo_ctx,
             &*config,
             blocks,
+            blocks_cache,
             &mut self.blocks_btns,
             offset_left,
             width_f,
@@ -416,26 +440,28 @@ impl Drop for Surface {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn render_blocks(
     context: &cairo::Context,
     config: &Config,
     blocks: &[Block],
+    blocks_cache: &mut Vec<ComputedBlock>,
     buttons: &mut ButtonManager<(Option<String>, Option<String>)>,
     offset_left: f64,
     full_width: f64,
     full_height: f64,
 ) {
-    let mut blocks_computed = Vec::with_capacity(blocks.len());
-    let mut blocks_width = 0.0;
-    let mut deltas = HashMap::<&str, f64>::new();
-    for (i, block) in blocks.iter().enumerate() {
+    let comp_min_width = |block: &Block| {
         let markup = block.markup.as_deref() == Some("pango");
-        let min_width = match &block.min_width {
+        match &block.min_width {
             Some(MinWidth::Pixels(p)) => Some(*p as f64),
             Some(MinWidth::Text(t)) => Some(text::width_of(t, context, markup, &config.font.0)),
             None => None,
-        };
-        let full_text = text::Text {
+        }
+    };
+    let comp_full = |block: &Block, min_width: Option<f64>| {
+        let markup = block.markup.as_deref() == Some("pango");
+        text::Text {
             text: block.full_text.clone(),
             attr: text::Attributes {
                 font: config.font.clone(),
@@ -446,10 +472,13 @@ fn render_blocks(
                 markup,
             },
         }
-        .compute(context);
-        let short_text = block.short_text.clone().map(|short_text| {
+        .compute(context)
+    };
+    let comp_short = |block: &Block, min_width: Option<f64>| {
+        let markup = block.markup.as_deref() == Some("pango");
+        block.short_text.as_ref().map(|short_text| {
             text::Text {
-                text: short_text,
+                text: short_text.clone(),
                 attr: text::Attributes {
                     font: config.font.clone(),
                     padding_left: 0.0,
@@ -460,34 +489,104 @@ fn render_blocks(
                 },
             }
             .compute(context)
-        });
-        blocks_width += full_text.width;
-        if i + 1 != blocks.len() {
-            blocks_width += block.separator_block_width as f64;
+        })
+    };
+
+    // update cashe
+    if blocks.len() != blocks_cache.len() {
+        blocks_cache.clear();
+        for block in blocks {
+            let mw = comp_min_width(block);
+            blocks_cache.push(ComputedBlock {
+                block: block.clone(),
+                full: comp_full(block, mw),
+                short: comp_short(block, mw),
+                min_width: mw,
+            });
         }
-        if let Some(short) = &short_text {
-            if let Some(name) = &block.name {
-                *deltas.entry(name).or_insert(0.0) += full_text.width - short.width;
+    } else {
+        for (block, computed) in blocks.iter().zip(blocks_cache.iter_mut()) {
+            if block.min_width != computed.block.min_width || block.markup != computed.block.markup
+            {
+                let mw = comp_min_width(block);
+                *computed = ComputedBlock {
+                    block: block.clone(),
+                    full: comp_full(block, mw),
+                    short: comp_short(block, mw),
+                    min_width: mw,
+                };
+            } else {
+                if block.full_text != computed.block.full_text {
+                    computed.block.full_text = block.full_text.clone();
+                    computed.full = comp_full(block, computed.min_width);
+                }
+                if block.short_text != computed.block.short_text {
+                    computed.block.full_text = block.full_text.clone();
+                    computed.short = comp_short(block, computed.min_width);
+                }
+                computed.block.color = block.color;
+                computed.block.background = block.background;
+                computed.block.align = block.align;
+                computed.block.name = block.name.clone();
+                computed.block.instance = block.instance.clone();
+                computed.block.separator = block.separator;
+                computed.block.separator_block_width = block.separator_block_width;
             }
         }
-        blocks_computed.push((block.name.as_deref(), full_text, short_text));
+    }
+
+    struct BlockSeries<'a> {
+        blocks: Vec<(&'a ComputedBlock, bool)>,
+        delta: f64,
+        separator: bool,
+        separator_block_width: u8,
+    }
+
+    let mut blocks_computed = Vec::new();
+    let mut blocks_width = 0.0;
+    let mut s_start = 0;
+    while s_start < blocks.len() {
+        let mut s_end = s_start + 1;
+        let series_name = &blocks[s_start].name;
+        while s_end < blocks.len()
+            && blocks[s_end - 1].separator_block_width == 0
+            && &blocks[s_end].name == series_name
+        {
+            s_end += 1;
+        }
+
+        let mut series = BlockSeries {
+            blocks: Vec::with_capacity(s_end - s_start),
+            delta: 0.0,
+            separator: blocks[s_end - 1].separator,
+            separator_block_width: blocks[s_end - 1].separator_block_width,
+        };
+
+        for comp in &blocks_cache[s_start..s_end] {
+            blocks_width += comp.full.width;
+            if let Some(short) = &comp.short {
+                series.delta += comp.full.width - short.width;
+            }
+            series.blocks.push((comp, false));
+        }
+        if s_end != blocks.len() {
+            blocks_width += series.separator_block_width as f64;
+        }
+        blocks_computed.push(series);
+        s_start = s_end;
     }
 
     // Progressively switch to short mode
     if offset_left + blocks_width > full_width {
         let mut heap = BinaryHeap::new();
-        for (name, delta) in deltas {
-            if delta > 0.0 {
-                heap.push((DefaultLess(delta), name));
+        for (i, b) in blocks_computed.iter().enumerate() {
+            if b.delta > 0.0 {
+                heap.push((DefaultLess(b.delta), i));
             }
         }
         while let Some((DefaultLess(delta), to_switch)) = heap.pop() {
-            for (name, full, short) in &mut blocks_computed {
-                if *name == Some(to_switch) {
-                    if let Some(short) = short {
-                        std::mem::swap(full, short);
-                    }
-                }
+            for comp in &mut blocks_computed[to_switch].blocks {
+                comp.1 = true;
             }
             blocks_width -= delta;
             if offset_left + blocks_width <= full_width {
@@ -496,32 +595,51 @@ fn render_blocks(
         }
     }
 
+    // Remove all the empy blocks
+    for s in &mut blocks_computed {
+        s.blocks.retain(|(text, is_short)| {
+            (*is_short && text.short.as_ref().map_or(false, |s| s.width > 0.0))
+                || (!is_short && text.full.width > 0.0)
+        });
+    }
+
+    // Render blocks
     buttons.clear();
-    for (i, (block, computed)) in blocks
-        .iter()
-        .zip(blocks_computed.iter().map(|(_, full, _)| full))
-        .enumerate()
-    {
-        computed.render(
-            context,
-            RenderOptions {
-                x_offset: full_width - blocks_width,
-                bar_height: full_height,
-                fg_color: block.color.unwrap_or(config.color),
-                bg_color: block.background,
-            },
-        );
-        buttons.push(
-            full_width - blocks_width,
-            computed.width,
-            (block.name.clone(), block.instance.clone()),
-        );
-        blocks_width -= computed.width;
-        if i + 1 != blocks.len() && block.separator_block_width > 0 {
-            let w = block.separator_block_width as f64;
-            if block.separator {
+    let mut j = 0;
+    for series in blocks_computed {
+        let s_len = series.blocks.len();
+        for (i, (computed, is_short)) in series.blocks.into_iter().enumerate() {
+            let block = &computed.block;
+            let to_render = if is_short {
+                computed.short.as_ref().unwrap_or(&computed.full)
+            } else {
+                &computed.full
+            };
+            j += 1;
+            to_render.render(
+                context,
+                RenderOptions {
+                    x_offset: full_width - blocks_width,
+                    bar_height: full_height,
+                    fg_color: block.color.unwrap_or(config.color),
+                    bg_color: block.background,
+                    r_left: if i == 0 { config.blocks_r } else { 0.0 },
+                    r_right: if i + 1 == s_len { config.blocks_r } else { 0.0 },
+                    overlap: config.blocks_overlap,
+                },
+            );
+            buttons.push(
+                full_width - blocks_width,
+                to_render.width,
+                (block.name.clone(), block.instance.clone()),
+            );
+            blocks_width -= to_render.width;
+        }
+        if j + 1 != blocks.len() && series.separator_block_width > 0 {
+            let w = series.separator_block_width as f64;
+            if series.separator && config.separator_width > 0.0 {
                 config.separator.apply(context);
-                context.set_line_width(2.0);
+                context.set_line_width(config.separator_width);
                 context.move_to(full_width - blocks_width + w * 0.5, full_height * 0.1);
                 context.line_to(full_width - blocks_width + w * 0.5, full_height * 0.9);
                 context.stroke().unwrap();
@@ -529,4 +647,11 @@ fn render_blocks(
             blocks_width -= w;
         }
     }
+}
+
+struct ComputedBlock {
+    block: Block,
+    full: ComputedText,
+    short: Option<ComputedText>,
+    min_width: Option<f64>,
 }

@@ -6,7 +6,7 @@ use serde::Deserialize;
 use serde::Serialize;
 use std::io::{Error, ErrorKind, Result};
 
-#[derive(Deserialize, Default)]
+#[derive(Clone, Deserialize, Default)]
 pub struct Block {
     pub full_text: String,
     #[serde(default)]
@@ -39,7 +39,7 @@ fn def_sep_width() -> u8 {
     9
 }
 
-#[derive(Deserialize, Clone)]
+#[derive(Deserialize, Clone, PartialEq, Eq)]
 #[serde(untagged)]
 pub enum MinWidth {
     Text(String),
