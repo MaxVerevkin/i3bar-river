@@ -535,6 +535,7 @@ fn render_blocks(
         }
     }
 
+    #[derive(Debug)]
     struct BlockSeries<'a> {
         blocks: Vec<(&'a ComputedBlock, bool)>,
         delta: f64,
@@ -598,7 +599,11 @@ fn render_blocks(
     // Remove all the empy blocks
     for s in &mut blocks_computed {
         s.blocks.retain(|(text, is_short)| {
-            (*is_short && text.short.as_ref().map_or(false, |s| s.width > 0.0))
+            (*is_short
+                && text
+                    .short
+                    .as_ref()
+                    .map_or(text.full.width > 0.0, |s| s.width > 0.0))
                 || (!is_short && text.full.width > 0.0)
         });
     }
@@ -649,6 +654,7 @@ fn render_blocks(
     }
 }
 
+#[derive(Debug)]
 struct ComputedBlock {
     block: Block,
     full: ComputedText,
