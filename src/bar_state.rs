@@ -536,7 +536,7 @@ fn render_blocks(
     }
 
     #[derive(Debug)]
-    struct BlockSeries<'a> {
+    struct LogialBlock<'a> {
         blocks: Vec<(&'a ComputedBlock, bool)>,
         delta: f64,
         separator: bool,
@@ -556,7 +556,7 @@ fn render_blocks(
             s_end += 1;
         }
 
-        let mut series = BlockSeries {
+        let mut series = LogialBlock {
             blocks: Vec::with_capacity(s_end - s_start),
             delta: 0.0,
             separator: blocks[s_end - 1].separator,
