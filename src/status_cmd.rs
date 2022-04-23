@@ -14,6 +14,7 @@ pub struct StatusCmd {
     output: BufReader<ChildStdout>,
     input: ChildStdin,
     protocol: Protocol,
+    buf: Vec<u8>,
 }
 
 impl StatusCmd {
@@ -30,12 +31,27 @@ impl StatusCmd {
             output: BufReader::new(output),
             input,
             protocol: Protocol::Unknown,
+            buf: Vec::new(),
         })
     }
 
     pub fn notify_available(&mut self) -> Result<Option<Vec<Block>>> {
         let buf = self.output.fill_buf()?;
-        self.protocol.process_new_bytes(buf)?;
+        if self.buf.is_empty() {
+            let rem = self.protocol.process_new_bytes(buf)?;
+            if !rem.is_empty() {
+                self.buf.extend_from_slice(rem);
+            }
+        } else {
+            self.buf.extend_from_slice(buf);
+            let rem = self.protocol.process_new_bytes(&self.buf)?;
+            if rem.is_empty() {
+                self.buf.clear();
+            } else {
+                let used = self.buf.len() - rem.len();
+                self.buf.drain(..used);
+            }
+        }
         let consumed = buf.len();
         self.output.consume(consumed);
         Ok(self.protocol.get_blocks())

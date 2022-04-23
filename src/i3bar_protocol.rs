@@ -82,24 +82,17 @@ pub enum Protocol {
     Unknown,
     PlainText {
         line: Option<String>,
-        buf: Vec<u8>,
     },
     JsonNotStarted(JsonHeader),
     Json {
         header: JsonHeader,
         blocks: Option<Vec<Block>>,
-        buf: Vec<u8>,
     },
 }
 
 impl Protocol {
-    pub fn process_new_bytes(&mut self, bytes: &[u8]) -> Result<()> {
-        macro_rules! invalid {
-            ($fmt:expr $(,$t:expr)*) => {
-                return Err(Error::new(ErrorKind::InvalidData, format!($fmt $(,$t)*)))
-            };
-        }
-
+    /// Extract new data from `bytes`, return unused bytes.
+    pub fn process_new_bytes<'a>(&mut self, bytes: &'a [u8]) -> Result<&'a [u8]> {
         match self {
             Self::Unknown => {
                 if let Ok((Some(header), rem)) = de_first_json::<JsonHeader>(bytes) {
@@ -108,27 +101,15 @@ impl Protocol {
                         return self.process_new_bytes(rem);
                     }
                 }
-                *self = Self::PlainText {
-                    line: None,
-                    buf: Vec::new(),
-                };
-                return self.process_new_bytes(bytes);
+                *self = Self::PlainText { line: None };
+                self.process_new_bytes(bytes)
             }
-            Self::PlainText { line, buf } => {
-                if buf.is_empty() {
-                    if let Some((new_line, rem)) = last_line(bytes) {
-                        *line = Some(String::from_utf8_lossy(new_line).into());
-                        buf.extend_from_slice(rem);
-                    } else {
-                        buf.extend_from_slice(bytes);
-                    }
+            Self::PlainText { line } => {
+                if let Some((new_line, rem)) = last_line(bytes) {
+                    *line = Some(String::from_utf8_lossy(new_line).into());
+                    Ok(rem)
                 } else {
-                    buf.extend_from_slice(bytes);
-                    if let Some((new_line, rem)) = last_line(buf) {
-                        *line = Some(String::from_utf8_lossy(new_line).into());
-                        let used = buf.len() - rem.len();
-                        buf.drain(..used);
-                    }
+                    Ok(bytes)
                 }
             }
             Self::JsonNotStarted(header) => {
@@ -141,45 +122,29 @@ impl Protocol {
                         *self = Self::Json {
                             header: *header,
                             blocks: None,
-                            buf: Vec::new(),
                         };
-                        return self.process_new_bytes(&bytes[1..]);
+                        self.process_new_bytes(&bytes[1..])
                     }
-                    Some(other) => invalid!("invalid json: expected '[', got '{}'", *other as char),
-                    _ => (),
+                    Some(other) => Err(Error::new(
+                        ErrorKind::InvalidData,
+                        format!("invalid json: expected '[', got '{}'", *other as char),
+                    )),
+                    _ => Ok(bytes),
                 }
             }
-            Self::Json {
-                header: _,
-                blocks,
-                buf,
-            } => {
-                if buf.is_empty() {
-                    match de_last_json(bytes) {
-                        Err(e) => invalid!("invalid json: {e}"),
-                        Ok((new_blocks, rem)) => {
-                            if let Some(new_blocks) = new_blocks {
-                                *blocks = Some(new_blocks);
-                            }
-                            buf.extend_from_slice(rem);
-                        }
+            Self::Json { header: _, blocks } => match de_last_json(bytes) {
+                Err(e) => Err(Error::new(
+                    ErrorKind::InvalidData,
+                    format!("invalid json: {e}"),
+                )),
+                Ok((new_blocks, rem)) => {
+                    if let Some(new_blocks) = new_blocks {
+                        *blocks = Some(new_blocks);
                     }
-                } else {
-                    buf.extend_from_slice(bytes);
-                    match de_last_json(buf) {
-                        Err(e) => invalid!("invalid json: {e}"),
-                        Ok((new_blocks, rem)) => {
-                            if let Some(new_blocks) = new_blocks {
-                                *blocks = Some(new_blocks);
-                            }
-                            let used = buf.len() - rem.len();
-                            buf.drain(..used);
-                        }
-                    }
+                    Ok(rem)
                 }
-            }
+            },
         }
-        Ok(())
     }
 
     pub fn get_blocks(&mut self) -> Option<Vec<Block>> {
