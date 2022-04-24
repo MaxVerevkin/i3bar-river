@@ -94,16 +94,20 @@ impl Protocol {
     /// Extract new data from `bytes`, return unused bytes.
     pub fn process_new_bytes<'a>(&mut self, bytes: &'a [u8]) -> Result<&'a [u8]> {
         match self {
-            Self::Unknown => {
-                if let Ok((Some(header), rem)) = de_first_json::<JsonHeader>(bytes) {
-                    if header.version == 1 {
-                        *self = Self::JsonNotStarted(header);
-                        return self.process_new_bytes(rem);
-                    }
+            Self::Unknown => match de_first_json::<JsonHeader>(bytes) {
+                Ok((Some(header), rem)) if header.version == 1 => {
+                    *self = Self::JsonNotStarted(header);
+                    self.process_new_bytes(rem)
                 }
-                *self = Self::PlainText { line: None };
-                self.process_new_bytes(bytes)
-            }
+                Ok((Some(header), _)) => Err(Error::new(
+                    ErrorKind::Other,
+                    format!("Protocol version {} is not supported", header.version),
+                )),
+                _ => {
+                    *self = Self::PlainText { line: None };
+                    self.process_new_bytes(bytes)
+                }
+            },
             Self::PlainText { line } => {
                 if let Some((new_line, rem)) = last_line(bytes) {
                     *line = Some(String::from_utf8_lossy(new_line).into());
