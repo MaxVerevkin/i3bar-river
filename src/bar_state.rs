@@ -327,6 +327,10 @@ impl Surface {
     }
 
     fn draw(&mut self, blocks: &[Block], blocks_cache: &mut Vec<ComputedBlock>) {
+        if self.dimensions == (0, 0) {
+            return;
+        }
+
         let config = self.config.borrow();
 
         let stride = 4 * self.dimensions.0 as i32;
