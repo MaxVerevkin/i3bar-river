@@ -644,7 +644,7 @@ fn render_blocks(
             );
             blocks_width -= to_render.width;
         }
-        if j + 1 != blocks.len() && series.separator_block_width > 0 {
+        if j != blocks.len() && series.separator_block_width > 0 {
             let w = series.separator_block_width as f64;
             if series.separator && config.separator_width > 0.0 {
                 config.separator.apply(context);
