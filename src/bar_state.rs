@@ -221,20 +221,9 @@ impl BarState {
     }
 
     pub fn handle_events(&mut self) {
-        // This is ugly, let's hope that some version of drain_filter() gets stabilized soon
-        // https://github.com/rust-lang/rust/issues/43244
-        let mut i = 0;
-        while i != self.surfaces.len() {
-            if self.surfaces[i].handle_events(
-                &self.blocks,
-                &mut self.blocks_cache,
-                self.blocks_updated,
-            ) {
-                self.surfaces.remove(i);
-            } else {
-                i += 1;
-            }
-        }
+        self.surfaces.retain_mut(|surface| {
+            !surface.handle_events(&self.blocks, &mut self.blocks_cache, self.blocks_updated)
+        });
         self.blocks_updated = false;
     }
 }
