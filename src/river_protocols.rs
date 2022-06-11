@@ -10,27 +10,27 @@ mod generated {
 
     pub mod client1 {
         // These imports are used by the generated code
-        pub(crate) use smithay_client_toolkit::reexports::client as wayland_client;
-        pub(crate) use wayland_client::protocol::*;
-        pub(crate) use wayland_client::sys;
-        pub(crate) use wayland_client::{AnonymousObject, Attached, Main, Proxy, ProxyMap};
-        pub(crate) use wayland_commons::map::{Object, ObjectMetadata};
-        pub(crate) use wayland_commons::smallvec;
-        pub(crate) use wayland_commons::wire::{Argument, ArgumentType, Message, MessageDesc};
-        pub(crate) use wayland_commons::{Interface, MessageGroup};
+        use smithay_client_toolkit::reexports::client as wayland_client;
+        use wayland_client::protocol::*;
+        use wayland_client::sys;
+        use wayland_client::{AnonymousObject, Attached, Main, Proxy, ProxyMap};
+        use wayland_commons::map::{Object, ObjectMetadata};
+        use wayland_commons::smallvec;
+        use wayland_commons::wire::{Argument, ArgumentType, Message, MessageDesc};
+        use wayland_commons::{Interface, MessageGroup};
         include!(concat!(env!("OUT_DIR"), "/river-status-unstable-v1.rs"));
     }
 
     pub mod client2 {
         // These imports are used by the generated code
-        pub(crate) use smithay_client_toolkit::reexports::client as wayland_client;
-        pub(crate) use wayland_client::protocol::*;
-        pub(crate) use wayland_client::sys;
-        pub(crate) use wayland_client::{AnonymousObject, Attached, Main, Proxy, ProxyMap};
-        pub(crate) use wayland_commons::map::{Object, ObjectMetadata};
-        pub(crate) use wayland_commons::smallvec;
-        pub(crate) use wayland_commons::wire::{Argument, ArgumentType, Message, MessageDesc};
-        pub(crate) use wayland_commons::{Interface, MessageGroup};
+        use smithay_client_toolkit::reexports::client as wayland_client;
+        use wayland_client::protocol::*;
+        use wayland_client::sys;
+        use wayland_client::{AnonymousObject, Attached, Main, Proxy, ProxyMap};
+        use wayland_commons::map::{Object, ObjectMetadata};
+        use wayland_commons::smallvec;
+        use wayland_commons::wire::{Argument, ArgumentType, Message, MessageDesc};
+        use wayland_commons::{Interface, MessageGroup};
         include!(concat!(env!("OUT_DIR"), "/river-control-unstable-v1.rs"));
     }
 }
