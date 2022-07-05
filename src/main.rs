@@ -13,6 +13,7 @@ use smithay_client_toolkit::{
         client::protocol::{wl_output, wl_pointer},
         protocols::wlr::unstable::layer_shell::v1::client::zwlr_layer_shell_v1,
     },
+    seat::pointer,
     WaylandSource,
 };
 
@@ -96,22 +97,29 @@ fn main() {
     let _listner_handle =
         env.listen_for_outputs(move |output, info, _| output_handler(output, info));
 
-    // Right now river only supports one seat: default
+    // Right now river only supports one seat
+    let cursor_theme = pointer::ThemeManager::init(
+        pointer::ThemeSpec::System,
+        env.require_global(),
+        env.require_global(),
+    );
     for seat in env.get_all_seats() {
         sctk::seat::with_seat_data(&seat, |seat_data| {
             if seat_data.has_pointer && !seat_data.defunct {
                 let pointer = seat.get_pointer();
+                let themed_pointer = cursor_theme.theme_pointer(pointer.detach());
                 let bar_state_handle = bar_state.clone();
                 let seat = seat.clone();
                 let mut pos = (0.0, 0.0);
                 let mut cur_surface = None;
                 pointer.quick_assign(move |_, event, _| match event {
                     wl_pointer::Event::Enter {
-                        serial: _,
+                        serial,
                         surface,
                         surface_x: y,
                         surface_y: x,
                     } => {
+                        let _ = themed_pointer.set_cursor("default", Some(serial));
                         cur_surface = Some(surface);
                         pos = (x, y);
                     }
