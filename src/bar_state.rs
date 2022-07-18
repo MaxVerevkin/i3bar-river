@@ -1,4 +1,4 @@
-use std::cell::{Cell, RefCell};
+use std::cell::RefCell;
 use std::collections::BinaryHeap;
 use std::io;
 use std::rc::Rc;
@@ -32,19 +32,11 @@ use crate::text;
 use crate::text::{ComputedText, RenderOptions};
 use crate::Env;
 
-#[derive(PartialEq, Copy, Clone)]
-enum RenderEvent {
-    Configure { width: u32, height: u32 },
-    TagsUpdated,
-    Closed,
-}
-
 pub struct BarState {
     pub status_cmd: Option<StatusCmd>,
     config: Rc<RefCell<Config>>,
     blocks: Vec<Block>,
     blocks_cache: Vec<ComputedBlock>,
-    blocks_updated: bool,
     surfaces: Vec<Surface>,
     layer_shell: Attached<zwlr_layer_shell_v1::ZwlrLayerShellV1>,
     river_status: Option<Attached<zriver_status_manager_v1::ZriverStatusManagerV1>>,
@@ -73,8 +65,7 @@ impl BarState {
             config: Rc::new(RefCell::new(config)),
             blocks: Vec::new(),
             blocks_cache: Vec::new(),
-            blocks_updated: false,
-            surfaces: Default::default(),
+            surfaces: Vec::default(),
             layer_shell: env.require_global::<zwlr_layer_shell_v1::ZwlrLayerShellV1>(),
             river_status: env.get_global::<zriver_status_manager_v1::ZriverStatusManagerV1>(),
             river_control: env.get_global::<zriver_control_v1::ZriverControlV1>(),
@@ -89,7 +80,9 @@ impl BarState {
 
     pub fn set_blocks(&mut self, blocks: Vec<Block>) {
         self.blocks = blocks;
-        self.blocks_updated = true;
+        for s in &mut self.surfaces {
+            s.dirty = true;
+        }
     }
 
     pub fn set_error(&mut self, error: impl Into<String>) {
@@ -154,25 +147,27 @@ impl BarState {
                 | zwlr_layer_surface_v1::Anchor::Right,
         );
 
-        let next_render_event = Rc::new(Cell::new(None));
-        let next_render_event_handle = Rc::clone(&next_render_event);
-        layer_surface.quick_assign(move |layer_surface, event, _| {
-            match (event, next_render_event_handle.get()) {
-                (zwlr_layer_surface_v1::Event::Closed, _) => {
-                    next_render_event_handle.set(Some(RenderEvent::Closed));
+        layer_surface.quick_assign(move |layer_surface, event, mut data| {
+            let bar_state: &mut BarState = data.get().unwrap();
+            match event {
+                zwlr_layer_surface_v1::Event::Closed => {
+                    bar_state.surfaces.retain(|s| s.output_id != output_id);
                 }
-                (
-                    zwlr_layer_surface_v1::Event::Configure {
-                        serial,
-                        width,
-                        height,
-                    },
-                    next,
-                ) if next != Some(RenderEvent::Closed) => {
+                zwlr_layer_surface_v1::Event::Configure {
+                    serial,
+                    width,
+                    height,
+                } => {
                     layer_surface.ack_configure(serial);
-                    next_render_event_handle.set(Some(RenderEvent::Configure { width, height }));
+                    for s in &mut bar_state.surfaces {
+                        if s.output_id == output_id && s.dimensions != (width, height) {
+                            s.dimensions = (width, height);
+                            s.layer_surface.set_exclusive_zone(height as _);
+                            s.dirty = true;
+                        }
+                    }
                 }
-                (_, _) => (),
+                _ => (),
             }
         });
 
@@ -182,9 +177,9 @@ impl BarState {
         let (river_output_status, tags_info) = if let Some(river_status) = &self.river_status {
             let tags_info = Rc::new(RefCell::new(TagsInfo::default()));
             let tags_info_handle = Rc::clone(&tags_info);
-            let next_render_event_handle = Rc::clone(&next_render_event);
             let river_output_status = river_status.get_river_output_status(output);
-            river_output_status.quick_assign(move |_, event, _| {
+            river_output_status.quick_assign(move |_, event, mut data| {
+                let bar_state: &mut BarState = data.get().unwrap();
                 match event {
                     zriver_output_status_v1::Event::FocusedTags { tags } => {
                         tags_info_handle.borrow_mut().focused = tags;
@@ -194,8 +189,10 @@ impl BarState {
                     }
                     _ => (),
                 }
-                if next_render_event_handle.get().is_none() {
-                    next_render_event_handle.set(Some(RenderEvent::TagsUpdated));
+                for s in &mut bar_state.surfaces {
+                    if s.output_id == output_id {
+                        s.dirty = true;
+                    }
                 }
             });
             (Some(river_output_status), Some(tags_info))
@@ -207,10 +204,10 @@ impl BarState {
             output_id,
             surface,
             layer_surface,
-            next_render_event,
             pool,
             dimensions: (0, 0),
             config: self.config.clone(),
+            dirty: true,
             river_output_status,
             river_control: self.river_control.clone(),
             tags_info,
@@ -221,10 +218,11 @@ impl BarState {
     }
 
     pub fn handle_events(&mut self) {
-        self.surfaces.retain_mut(|surface| {
-            !surface.handle_events(&self.blocks, &mut self.blocks_cache, self.blocks_updated)
-        });
-        self.blocks_updated = false;
+        for surface in &mut self.surfaces {
+            if surface.dirty {
+                surface.draw(&self.blocks, &mut self.blocks_cache);
+            }
+        }
     }
 }
 
@@ -232,10 +230,10 @@ pub struct Surface {
     output_id: u32,
     surface: WlSurface,
     layer_surface: Main<zwlr_layer_surface_v1::ZwlrLayerSurfaceV1>,
-    next_render_event: Rc<Cell<Option<RenderEvent>>>,
     pool: AutoMemPool,
     dimensions: (u32, u32),
     config: Rc<RefCell<Config>>,
+    dirty: bool,
     // river stuff
     river_output_status: Option<Main<zriver_output_status_v1::ZriverOutputStatusV1>>,
     river_control: Option<Attached<zriver_control_v1::ZriverControlV1>>,
@@ -248,37 +246,6 @@ pub struct Surface {
 }
 
 impl Surface {
-    /// Handles any events that have occurred since the last call, redrawing if needed.
-    /// Returns true if the surface should be dropped.
-    fn handle_events(
-        &mut self,
-        blocks: &[Block],
-        blocks_cache: &mut Vec<ComputedBlock>,
-        blocks_updated: bool,
-    ) -> bool {
-        match self.next_render_event.take() {
-            Some(RenderEvent::Closed) => return true,
-            Some(RenderEvent::Configure { width, height }) => {
-                if self.dimensions != (width, height) {
-                    self.dimensions = (width, height);
-                    self.layer_surface.set_exclusive_zone(height as _);
-                    self.draw(blocks, blocks_cache);
-                    return false;
-                }
-            }
-            Some(RenderEvent::TagsUpdated) => {
-                self.draw(blocks, blocks_cache);
-                return false;
-            }
-            _ => (),
-        }
-        if blocks_updated {
-            self.draw(blocks, blocks_cache);
-            return false;
-        }
-        false
-    }
-
     fn click(
         &self,
         button: PointerBtn,
@@ -420,6 +387,7 @@ impl Surface {
 
         // Finally, commit the surface
         self.surface.commit();
+        self.dirty = false;
     }
 }
 

@@ -18,3 +18,8 @@ memchr = "2.4"
 
 [build-dependencies]
 wayland-scanner = "0.29"
+
+[profile.release]
+lto = "thin"
+strip = true
+debug = 1

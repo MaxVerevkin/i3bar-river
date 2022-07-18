@@ -1,8 +1,6 @@
-use std::cell::RefCell;
 use std::io::{BufRead, BufReader, Result, Write};
 use std::os::unix::prelude::AsRawFd;
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
-use std::rc::Rc;
 
 use smithay_client_toolkit::reexports::calloop::{self, LoopHandle};
 
@@ -64,7 +62,7 @@ impl StatusCmd {
         Ok(())
     }
 
-    pub fn quick_insert(&self, handle: LoopHandle<()>, bar_state: Rc<RefCell<BarState>>) {
+    pub fn quick_insert(&self, handle: LoopHandle<BarState>) {
         handle
             .insert_source(
                 calloop::generic::Generic::new(
@@ -75,12 +73,11 @@ impl StatusCmd {
                     },
                     calloop::Mode::Level,
                 ),
-                move |ready, _, _| {
+                move |ready, _, bar_state| {
                     if ready.readable {
-                        bar_state.borrow_mut().notify_available()?;
+                        bar_state.notify_available()?;
                         Ok(calloop::PostAction::Continue)
                     } else {
-                        let mut bar_state = bar_state.borrow_mut();
                         bar_state.set_error("error reading from status command");
                         if let Some(mut child) = bar_state.status_cmd.take() {
                             let _ = child.child.kill();
