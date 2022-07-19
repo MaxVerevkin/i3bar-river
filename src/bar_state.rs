@@ -113,7 +113,11 @@ impl BarState {
         y: f64,
         btn: PointerBtn,
     ) {
-        if let Some(s) = self.surfaces.iter().find(|s| &s.surface == surface) {
+        if let Some(s) = self
+            .surfaces
+            .iter()
+            .find(|s| &s.surface.detach() == surface)
+        {
             if let Some(event) = s.click(btn, seat, x, y) {
                 if let Some(cmd) = &mut self.status_cmd {
                     if let Err(e) = cmd.send_click_event(&event) {
@@ -128,7 +132,7 @@ impl BarState {
         &mut self,
         output: &WlOutput,
         output_id: u32,
-        surface: WlSurface,
+        surface: Attached<WlSurface>,
         pool: AutoMemPool,
     ) {
         let layer_surface = self.layer_shell.get_layer_surface(
@@ -159,11 +163,13 @@ impl BarState {
                     height,
                 } => {
                     layer_surface.ack_configure(serial);
-                    for s in &mut bar_state.surfaces {
-                        if s.output_id == output_id && s.dimensions != (width, height) {
-                            s.dimensions = (width, height);
-                            s.layer_surface.set_exclusive_zone(height as _);
-                            s.dirty = true;
+                    if let Some(s) = bar_state
+                        .surfaces
+                        .iter_mut()
+                        .find(|s| s.output_id == output_id)
+                    {
+                        if s.configure(width, height) {
+                            s.draw(&bar_state.blocks, &mut bar_state.blocks_cache);
                         }
                     }
                 }
@@ -208,6 +214,7 @@ impl BarState {
             dimensions: (0, 0),
             config: self.config.clone(),
             dirty: true,
+            frame_scheduled: false,
             river_output_status,
             river_control: self.river_control.clone(),
             tags_info,
@@ -216,24 +223,17 @@ impl BarState {
             blocks_btns: Default::default(),
         });
     }
-
-    pub fn handle_events(&mut self) {
-        for surface in &mut self.surfaces {
-            if surface.dirty {
-                surface.draw(&self.blocks, &mut self.blocks_cache);
-            }
-        }
-    }
 }
 
 pub struct Surface {
     output_id: u32,
-    surface: WlSurface,
+    surface: Attached<WlSurface>,
     layer_surface: Main<zwlr_layer_surface_v1::ZwlrLayerSurfaceV1>,
     pool: AutoMemPool,
     dimensions: (u32, u32),
     config: Rc<RefCell<Config>>,
     dirty: bool,
+    frame_scheduled: bool,
     // river stuff
     river_output_status: Option<Main<zriver_output_status_v1::ZriverOutputStatusV1>>,
     river_control: Option<Attached<zriver_control_v1::ZriverControlV1>>,
@@ -246,6 +246,18 @@ pub struct Surface {
 }
 
 impl Surface {
+    /// Handle `configure` event. Returns `true` if configuration changed.
+    fn configure(&mut self, width: u32, height: u32) -> bool {
+        if self.dimensions != (width, height) {
+            self.dimensions = (width, height);
+            self.layer_surface.set_exclusive_zone(height as i32);
+            self.dirty = true;
+            true
+        } else {
+            false
+        }
+    }
+
     fn click(
         &self,
         button: PointerBtn,
@@ -283,107 +295,124 @@ impl Surface {
     }
 
     fn draw(&mut self, blocks: &[Block], blocks_cache: &mut Vec<ComputedBlock>) {
-        if self.dimensions == (0, 0) {
-            return;
-        }
+        if self.dirty {
+            let config = self.config.borrow();
 
-        let config = self.config.borrow();
+            let stride = 4 * self.dimensions.0 as i32;
+            let width = self.dimensions.0 as i32;
+            let height = self.dimensions.1 as i32;
+            let width_f = width as f64;
+            let height_f = height as f64;
 
-        let stride = 4 * self.dimensions.0 as i32;
-        let width = self.dimensions.0 as i32;
-        let height = self.dimensions.1 as i32;
-        let width_f = width as f64;
-        let height_f = height as f64;
+            let (canvas, buffer) = self
+                .pool
+                .buffer(width, height, stride, wl_shm::Format::Argb8888)
+                .unwrap();
 
-        let (canvas, buffer) = self
-            .pool
-            .buffer(width, height, stride, wl_shm::Format::Argb8888)
-            .unwrap();
+            let cairo_surf = unsafe {
+                cairo::ImageSurface::create_for_data_unsafe(
+                    canvas.as_mut_ptr(),
+                    cairo::Format::ARgb32,
+                    width,
+                    height,
+                    stride,
+                )
+                .expect("cairo surface")
+            };
 
-        let cairo_surf = unsafe {
-            cairo::ImageSurface::create_for_data_unsafe(
-                canvas.as_mut_ptr(),
-                cairo::Format::ARgb32,
-                width,
-                height,
-                stride,
-            )
-            .expect("cairo surface")
-        };
+            let cairo_ctx = cairo::Context::new(&cairo_surf).expect("cairo context");
+            let pango_layout = pangocairo::create_layout(&cairo_ctx).expect("pango layout");
+            pango_layout.set_font_description(Some(&config.font));
+            pango_layout.set_height(height);
 
-        let cairo_ctx = cairo::Context::new(&cairo_surf).expect("cairo context");
-        let pango_layout = pangocairo::create_layout(&cairo_ctx).expect("pango layout");
-        pango_layout.set_font_description(Some(&config.font));
-        pango_layout.set_height(height);
+            // Background
+            config.background.apply(&cairo_ctx);
+            cairo_ctx.paint().expect("cairo paint");
 
-        // Background
-        config.background.apply(&cairo_ctx);
-        cairo_ctx.paint().expect("cairo paint");
-
-        // Display tags
-        let mut offset_left = 0.0;
-        if let Some(tags_info) = &self.tags_info {
-            if self.tags_computed.is_empty() {
-                let mut x_offset = 0.0;
-                //  TODO make configurable
-                for (id, text) in ["1", "2", "3", "4", "5", "6", "7", "8", "9"]
-                    .iter()
-                    .enumerate()
-                {
-                    let tag = compute_tag_label(text.to_string(), config.font.clone(), &cairo_ctx);
-                    self.tags_btns.push(x_offset, tag.width, id);
-                    x_offset += tag.width;
-                    self.tags_computed.push(tag);
+            // Display tags
+            let mut offset_left = 0.0;
+            if let Some(tags_info) = &self.tags_info {
+                if self.tags_computed.is_empty() {
+                    let mut x_offset = 0.0;
+                    //  TODO make configurable
+                    for (id, text) in ["1", "2", "3", "4", "5", "6", "7", "8", "9"]
+                        .iter()
+                        .enumerate()
+                    {
+                        let tag =
+                            compute_tag_label(text.to_string(), config.font.clone(), &cairo_ctx);
+                        self.tags_btns.push(x_offset, tag.width, id);
+                        x_offset += tag.width;
+                        self.tags_computed.push(tag);
+                    }
+                }
+                let tags_info = tags_info.borrow();
+                for (i, label) in self.tags_computed.iter().enumerate() {
+                    let state = tags_info.get_state(i);
+                    let (bg, fg) = match state {
+                        TagState::Focused => (config.tag_focused_bg, config.tag_focused_fg),
+                        TagState::Inactive => (config.tag_bg, config.tag_fg),
+                        TagState::Urgent => (config.tag_urgent_bg, config.tag_urgent_fg),
+                    };
+                    label.render(
+                        &cairo_ctx,
+                        RenderOptions {
+                            x_offset: offset_left,
+                            bar_height: height_f,
+                            fg_color: fg,
+                            bg_color: Some(bg),
+                            r_left: if i == 0 || tags_info.get_state(i.saturating_sub(1)) != state {
+                                config.tags_r
+                            } else {
+                                0.0
+                            },
+                            r_right: if i == 8 || tags_info.get_state(i + 1) != state {
+                                config.tags_r
+                            } else {
+                                0.0
+                            },
+                            overlap: 0.0,
+                        },
+                    );
+                    offset_left += label.width;
                 }
             }
-            let tags_info = tags_info.borrow();
-            for (i, label) in self.tags_computed.iter().enumerate() {
-                let state = tags_info.get_state(i);
-                let (bg, fg) = match state {
-                    TagState::Focused => (config.tag_focused_bg, config.tag_focused_fg),
-                    TagState::Inactive => (config.tag_bg, config.tag_fg),
-                    TagState::Urgent => (config.tag_urgent_bg, config.tag_urgent_fg),
-                };
-                label.render(
-                    &cairo_ctx,
-                    RenderOptions {
-                        x_offset: offset_left,
-                        bar_height: height_f,
-                        fg_color: fg,
-                        bg_color: Some(bg),
-                        r_left: if i == 0 || tags_info.get_state(i.saturating_sub(1)) != state {
-                            config.tags_r
-                        } else {
-                            0.0
-                        },
-                        r_right: if i == 8 || tags_info.get_state(i + 1) != state {
-                            config.tags_r
-                        } else {
-                            0.0
-                        },
-                        overlap: 0.0,
-                    },
-                );
-                offset_left += label.width;
-            }
+
+            // Display the blocks
+            render_blocks(
+                &cairo_ctx,
+                &*config,
+                blocks,
+                blocks_cache,
+                &mut self.blocks_btns,
+                offset_left,
+                width_f,
+                height_f,
+            );
+
+            // Attach the buffer to the surface and mark the entire surface as damaged
+            self.surface.attach(Some(&buffer), 0, 0);
+            self.surface
+                .damage_buffer(0, 0, width as i32, height as i32);
         }
 
-        // Display the blocks
-        render_blocks(
-            &cairo_ctx,
-            &*config,
-            blocks,
-            blocks_cache,
-            &mut self.blocks_btns,
-            offset_left,
-            width_f,
-            height_f,
-        );
-
-        // Attach the buffer to the surface and mark the entire surface as damaged
-        self.surface.attach(Some(&buffer), 0, 0);
-        self.surface
-            .damage_buffer(0, 0, width as i32, height as i32);
+        // Schedule next frame
+        if !self.frame_scheduled {
+            self.frame_scheduled = true;
+            let output_id = self.output_id;
+            let frame = self.surface.frame();
+            frame.quick_assign(move |_callback, _event, mut data| {
+                let bar_state: &mut BarState = data.get().unwrap();
+                if let Some(s) = bar_state
+                    .surfaces
+                    .iter_mut()
+                    .find(|s| s.output_id == output_id)
+                {
+                    s.frame_scheduled = false;
+                    s.draw(&bar_state.blocks, &mut bar_state.blocks_cache);
+                }
+            });
+        }
 
         // Finally, commit the surface
         self.surface.commit();

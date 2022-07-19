@@ -53,7 +53,7 @@ default_environment!(Env,
 fn main() {
     env_logger::init();
 
-    let (env, display, queue) = new_default_environment!(
+    let (env, _display, queue) = new_default_environment!(
         Env,
         fields = [
             layer_shell: SimpleGlobal::new(),
@@ -74,7 +74,7 @@ fn main() {
                 output.release();
             } else {
                 info!("Output detected");
-                let surface = env_handle.create_surface().detach();
+                let surface = env_handle.create_surface();
                 let pool = env_handle
                     .create_auto_pool()
                     .expect("Failed to create a memory pool!");
@@ -188,8 +188,6 @@ fn main() {
     }
 
     loop {
-        bar_state.handle_events();
-        display.flush().unwrap();
         if let Err(e) = event_loop.dispatch(None, &mut bar_state) {
             bar_state.set_error(e.to_string());
         }
