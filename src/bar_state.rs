@@ -128,13 +128,12 @@ impl BarState {
         }
     }
 
-    pub fn add_surface(
-        &mut self,
-        output: &WlOutput,
-        output_id: u32,
-        surface: Attached<WlSurface>,
-        pool: AutoMemPool,
-    ) {
+    pub fn add_surface(&mut self, output: &WlOutput, output_id: u32, env: &Environment<Env>) {
+        let surface = env.create_surface();
+        let pool = env
+            .create_auto_pool()
+            .expect("Failed to create a memory pool!");
+
         let layer_surface = self.layer_shell.get_layer_surface(
             &surface,
             Some(output),
@@ -155,7 +154,7 @@ impl BarState {
             let bar_state: &mut BarState = data.get().unwrap();
             match event {
                 zwlr_layer_surface_v1::Event::Closed => {
-                    bar_state.surfaces.retain(|s| s.output_id != output_id);
+                    bar_state.remove_surface(output_id);
                 }
                 zwlr_layer_surface_v1::Event::Configure {
                     serial,
@@ -181,27 +180,27 @@ impl BarState {
         surface.commit();
 
         let (river_output_status, tags_info) = if let Some(river_status) = &self.river_status {
-            let tags_info = Rc::new(RefCell::new(TagsInfo::default()));
-            let tags_info_handle = Rc::clone(&tags_info);
             let river_output_status = river_status.get_river_output_status(output);
             river_output_status.quick_assign(move |_, event, mut data| {
                 let bar_state: &mut BarState = data.get().unwrap();
-                match event {
-                    zriver_output_status_v1::Event::FocusedTags { tags } => {
-                        tags_info_handle.borrow_mut().focused = tags;
+                if let Some(s) = bar_state
+                    .surfaces
+                    .iter_mut()
+                    .find(|s| s.output_id == output_id)
+                {
+                    match event {
+                        zriver_output_status_v1::Event::FocusedTags { tags } => {
+                            s.tags_info.as_mut().unwrap().focused = tags;
+                        }
+                        zriver_output_status_v1::Event::UrgentTags { tags } => {
+                            s.tags_info.as_mut().unwrap().urgent = tags;
+                        }
+                        _ => (),
                     }
-                    zriver_output_status_v1::Event::UrgentTags { tags } => {
-                        tags_info_handle.borrow_mut().urgent = tags;
-                    }
-                    _ => (),
-                }
-                for s in &mut bar_state.surfaces {
-                    if s.output_id == output_id {
-                        s.dirty = true;
-                    }
+                    s.dirty = true;
                 }
             });
-            (Some(river_output_status), Some(tags_info))
+            (Some(river_output_status), Some(TagsInfo::default()))
         } else {
             (None, None)
         };
@@ -238,7 +237,7 @@ pub struct Surface {
     river_output_status: Option<Main<zriver_output_status_v1::ZriverOutputStatusV1>>,
     river_control: Option<Attached<zriver_control_v1::ZriverControlV1>>,
     // tags
-    tags_info: Option<Rc<RefCell<TagsInfo>>>,
+    tags_info: Option<TagsInfo>,
     tags_computed: Vec<ComputedText>,
     // buttons
     tags_btns: ButtonManager,
@@ -346,7 +345,6 @@ impl Surface {
                         self.tags_computed.push(tag);
                     }
                 }
-                let tags_info = tags_info.borrow();
                 for (i, label) in self.tags_computed.iter().enumerate() {
                     let state = tags_info.get_state(i);
                     let (bg, fg) = match state {

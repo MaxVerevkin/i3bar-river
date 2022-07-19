@@ -12,7 +12,7 @@ use smithay_client_toolkit::{
     output::{with_output_info, OutputInfo},
     reexports::{
         calloop,
-        client::protocol::{wl_output, wl_pointer},
+        client::protocol::{wl_output::WlOutput, wl_pointer},
         protocols::wlr::unstable::layer_shell::v1::client::zwlr_layer_shell_v1,
     },
     seat::pointer,
@@ -66,21 +66,15 @@ fn main() {
     let mut bar_state = BarState::new(&env);
 
     let env_handle = env.clone();
-    let output_handler =
-        move |output: wl_output::WlOutput, info: &OutputInfo, bar_state: &mut BarState| {
-            if info.obsolete {
-                info!("Output removed");
-                bar_state.remove_surface(info.id);
-                output.release();
-            } else {
-                info!("Output detected");
-                let surface = env_handle.create_surface();
-                let pool = env_handle
-                    .create_auto_pool()
-                    .expect("Failed to create a memory pool!");
-                bar_state.add_surface(&output, info.id, surface, pool);
-            }
-        };
+    let output_handler = move |output: WlOutput, info: &OutputInfo, bar_state: &mut BarState| {
+        if info.obsolete {
+            info!("Output {} removed", info.id);
+            output.release();
+        } else {
+            info!("Output {} detected", info.id);
+            bar_state.add_surface(&output, info.id, &env_handle);
+        }
+    };
 
     // Process currently existing outputs
     for output in env.get_all_outputs() {
