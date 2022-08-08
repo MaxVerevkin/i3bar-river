@@ -7,8 +7,8 @@ use std::fmt;
 use std::fs::read_to_string;
 use std::ops::Deref;
 
-#[derive(Deserialize)]
-#[serde(default)]
+#[derive(Deserialize, Debug)]
+#[serde(deny_unknown_fields, default)]
 pub struct Config {
     // colors
     pub background: Color,
@@ -79,6 +79,7 @@ impl Config {
     }
 }
 
+#[derive(Debug)]
 pub struct Font(pub FontDescription);
 
 impl Font {

@@ -64,7 +64,7 @@ pub struct Event<'a> {
     pub height: u8,
 }
 
-#[derive(Deserialize, Clone, Copy)]
+#[derive(Deserialize, Clone, Copy, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct JsonHeader {
     version: u8,
@@ -78,6 +78,7 @@ pub struct JsonHeader {
     click_events: bool,
 }
 
+#[derive(Debug)]
 pub enum Protocol {
     Unknown,
     PlainText {
