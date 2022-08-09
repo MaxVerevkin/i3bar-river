@@ -133,8 +133,7 @@ impl Bar {
                     .iter()
                     .enumerate()
                 {
-                    let tag =
-                        compute_tag_label(text.to_string(), ss.config.font.clone(), &cairo_ctx);
+                    let tag = compute_tag_label(text, ss.config.font.clone(), &cairo_ctx);
                     self.tags_btns.push(x_offset, tag.width, id);
                     x_offset += tag.width;
                     self.tags_computed.push(tag);
@@ -218,9 +217,9 @@ fn render_blocks(
     };
     let comp_full = |block: &Block, min_width: Option<f64>| {
         let markup = block.markup.as_deref() == Some("pango");
-        text::Text {
-            text: block.full_text.clone(),
-            attr: text::Attributes {
+        text::ComputedText::new(
+            &block.full_text,
+            text::Attributes {
                 font: config.font.clone(),
                 padding_left: 0.0,
                 padding_right: 0.0,
@@ -228,15 +227,15 @@ fn render_blocks(
                 align: block.align.unwrap_or_default(),
                 markup,
             },
-        }
-        .compute(context)
+            context,
+        )
     };
     let comp_short = |block: &Block, min_width: Option<f64>| {
         let markup = block.markup.as_deref() == Some("pango");
         block.short_text.as_ref().map(|short_text| {
-            text::Text {
-                text: short_text.clone(),
-                attr: text::Attributes {
+            text::ComputedText::new(
+                short_text,
+                text::Attributes {
                     font: config.font.clone(),
                     padding_left: 0.0,
                     padding_right: 0.0,
@@ -244,8 +243,8 @@ fn render_blocks(
                     align: block.align.unwrap_or_default(),
                     markup,
                 },
-            }
-            .compute(context)
+                context,
+            )
         })
     };
 

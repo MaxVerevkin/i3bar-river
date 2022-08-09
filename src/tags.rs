@@ -1,4 +1,4 @@
-use crate::text::{Attributes, ComputedText, Text};
+use crate::text::{Attributes, ComputedText};
 use cairo::Context;
 use pango::FontDescription;
 use pangocairo::{cairo, pango};
@@ -28,9 +28,10 @@ impl TagsInfo {
     }
 }
 
-pub fn compute_tag_label(label: String, font: FontDescription, context: &Context) -> ComputedText {
-    let text = Text {
-        attr: Attributes {
+pub fn compute_tag_label(label: &str, font: FontDescription, context: &Context) -> ComputedText {
+    ComputedText::new(
+        label,
+        Attributes {
             font,
             padding_left: 25.0,
             padding_right: 25.0,
@@ -38,7 +39,6 @@ pub fn compute_tag_label(label: String, font: FontDescription, context: &Context
             align: Default::default(),
             markup: false,
         },
-        text: label,
-    };
-    text.compute(context)
+        context,
+    )
 }
