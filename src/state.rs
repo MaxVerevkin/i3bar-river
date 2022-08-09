@@ -194,7 +194,7 @@ impl OutputHandler for State {
             .expect("layer surface creation");
         let river_output_status = self.river_status_state.new_output_status(qh, &output).ok();
         self.bars.push(Bar {
-            first_configure: true,
+            configured: false,
             width: 0,
             height,
             scale: 1,

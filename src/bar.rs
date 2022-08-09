@@ -20,7 +20,7 @@ use crate::{
 };
 
 pub struct Bar {
-    pub first_configure: bool,
+    pub configured: bool,
     pub width: u32,
     pub height: u32,
     pub scale: i32,
@@ -35,12 +35,12 @@ pub struct Bar {
 
 impl Bar {
     pub fn configure(&mut self, ss: &mut SharedState, width: u32) {
-        if self.width != width {
+        if self.width != width && width != 0 {
             self.width = width;
             self.layer.set_exclusive_zone(self.height as i32);
         }
 
-        self.first_configure = false;
+        self.configured = true;
         self.draw(ss);
     }
 
@@ -84,7 +84,7 @@ impl Bar {
     }
 
     pub fn draw(&mut self, ss: &mut SharedState) {
-        if self.first_configure {
+        if !self.configured {
             return;
         }
 
