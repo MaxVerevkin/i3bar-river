@@ -16,8 +16,8 @@ pub struct RenderOptions {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct Attributes {
-    pub font: FontDescription,
+pub struct Attributes<'a> {
+    pub font: &'a FontDescription,
     pub padding_left: f64,
     pub padding_right: f64,
     pub min_width: Option<f64>,
@@ -41,16 +41,16 @@ impl Default for Align {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct ComputedText {
-    pub layout: pango::Layout,
-    pub attr: Attributes,
     pub width: f64,
-    pub height: f64,
+    layout: pango::Layout,
+    height: f64,
+    padding_left: f64,
 }
 
 impl ComputedText {
     pub fn new(text: &str, mut attr: Attributes, context: &cairo::Context) -> Self {
         let layout = pangocairo::create_layout(context).unwrap();
-        layout.set_font_description(Some(&attr.font));
+        layout.set_font_description(Some(attr.font));
         if attr.markup {
             layout.set_markup(text);
         } else {
@@ -77,10 +77,10 @@ impl ComputedText {
         }
 
         Self {
-            layout,
-            attr,
             width,
+            layout,
             height,
+            padding_left: attr.padding_left,
         }
     }
 
@@ -105,7 +105,7 @@ impl ComputedText {
 
         options.fg_color.apply(context);
         context.translate(
-            self.attr.padding_left + options.overlap,
+            self.padding_left + options.overlap,
             (options.bar_height - self.height) * 0.5,
         );
         pangocairo::show_layout(context, &self.layout);
@@ -138,7 +138,7 @@ pub fn width_of(text: &str, context: &cairo::Context, markup: bool, font: &FontD
     ComputedText::new(
         text,
         Attributes {
-            font: font.clone(),
+            font,
             padding_left: 0.0,
             padding_right: 0.0,
             min_width: None,

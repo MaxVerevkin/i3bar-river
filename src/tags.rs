@@ -32,7 +32,7 @@ impl TagsInfo {
     }
 }
 
-pub fn compute_tag_label(label: &str, font: FontDescription, context: &Context) -> ComputedText {
+pub fn compute_tag_label(label: &str, font: &FontDescription, context: &Context) -> ComputedText {
     ComputedText::new(
         label,
         Attributes {

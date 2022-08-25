@@ -129,11 +129,8 @@ impl Bar {
             if self.tags_computed.is_empty() {
                 //  TODO make configurable
                 for text in ["1", "2", "3", "4", "5", "6", "7", "8", "9"] {
-                    self.tags_computed.push(compute_tag_label(
-                        text,
-                        ss.config.font.clone(),
-                        &cairo_ctx,
-                    ));
+                    self.tags_computed
+                        .push(compute_tag_label(text, &ss.config.font, &cairo_ctx));
                 }
             }
             self.tags_btns.clear();
@@ -225,7 +222,7 @@ fn render_blocks(
         text::ComputedText::new(
             &block.full_text,
             text::Attributes {
-                font: config.font.clone(),
+                font: &config.font,
                 padding_left: 0.0,
                 padding_right: 0.0,
                 min_width,
@@ -241,7 +238,7 @@ fn render_blocks(
             text::ComputedText::new(
                 short_text,
                 text::Attributes {
-                    font: config.font.clone(),
+                    font: &config.font,
                     padding_left: 0.0,
                     padding_right: 0.0,
                     min_width,
