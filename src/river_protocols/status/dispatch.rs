@@ -79,7 +79,13 @@ where
             match event {
                 Event::FocusedTags { tags } => data.focused_tags_updated(conn, qh, &status, tags),
                 Event::UrgentTags { tags } => data.urgent_tags_updated(conn, qh, &status, tags),
-                Event::ViewTags { tags: _ } => (),
+                Event::ViewTags { tags } => {
+                    let tags = tags
+                        .chunks_exact(4)
+                        .map(|bytes| u32::from_ne_bytes(bytes.try_into().unwrap()))
+                        .collect();
+                    data.views_tags_updated(conn, qh, &status, tags);
+                }
             }
         }
     }

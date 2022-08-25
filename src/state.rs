@@ -380,6 +380,22 @@ impl RiverStatusHandler for State {
         bar.tags_info.urgent = urgent;
         bar.draw(self.shared_state.as_mut().unwrap());
     }
+
+    fn views_tags_updated(
+        &mut self,
+        _conn: &Connection,
+        _qh: &QueueHandle<Self>,
+        output_status: &RiverOutputStatus,
+        tags: Vec<u32>,
+    ) {
+        let bar = self
+            .bars
+            .iter_mut()
+            .find(|b| b.river_output_status.as_ref() == Some(output_status))
+            .unwrap();
+        bar.tags_info.active = tags.into_iter().fold(0, |a, b| a | b);
+        bar.draw(self.shared_state.as_mut().unwrap());
+    }
 }
 
 impl RiverControlHandler for State {

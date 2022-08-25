@@ -20,6 +20,8 @@ pub struct Config {
     pub tag_focused_bg: Color,
     pub tag_urgent_fg: Color,
     pub tag_urgent_bg: Color,
+    pub tag_inactive_fg: Color,
+    pub tag_inactive_bg: Color,
     // font and size
     pub font: Font,
     pub height: u32,
@@ -29,6 +31,8 @@ pub struct Config {
     pub blocks_overlap: f64,
     // command
     pub command: Option<String>,
+    // misc
+    pub hide_inactive_tags: bool,
 }
 
 impl Default for Config {
@@ -44,6 +48,8 @@ impl Default for Config {
             tag_focused_bg: Color::from_rgba_hex(0x689d68ff),
             tag_urgent_fg: Color::from_rgba_hex(0x282828ff),
             tag_urgent_bg: Color::from_rgba_hex(0xcc241dff),
+            tag_inactive_fg: Color::from_rgba_hex(0xd79921ff),
+            tag_inactive_bg: Color::from_rgba_hex(0x282828ff),
             font: Font::new("monospace 10"),
             height: 24,
             separator_width: 2.0,
@@ -51,6 +57,7 @@ impl Default for Config {
             blocks_r: 0.0,
             blocks_overlap: 0.0,
             command: None,
+            hide_inactive_tags: false,
         }
     }
 }

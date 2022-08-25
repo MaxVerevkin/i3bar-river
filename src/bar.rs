@@ -127,24 +127,28 @@ impl Bar {
         let mut offset_left = 0.0;
         if self.has_tags_provider() {
             if self.tags_computed.is_empty() {
-                let mut x_offset = 0.0;
                 //  TODO make configurable
-                for (id, text) in ["1", "2", "3", "4", "5", "6", "7", "8", "9"]
-                    .iter()
-                    .enumerate()
-                {
-                    let tag = compute_tag_label(text, ss.config.font.clone(), &cairo_ctx);
-                    self.tags_btns.push(x_offset, tag.width, id);
-                    x_offset += tag.width;
-                    self.tags_computed.push(tag);
+                for text in ["1", "2", "3", "4", "5", "6", "7", "8", "9"] {
+                    self.tags_computed.push(compute_tag_label(
+                        text,
+                        ss.config.font.clone(),
+                        &cairo_ctx,
+                    ));
                 }
             }
+            self.tags_btns.clear();
             for (i, label) in self.tags_computed.iter().enumerate() {
                 let state = self.tags_info.get_state(i);
                 let (bg, fg) = match state {
-                    TagState::Focused => (ss.config.tag_focused_bg, ss.config.tag_focused_fg),
-                    TagState::Inactive => (ss.config.tag_bg, ss.config.tag_fg),
                     TagState::Urgent => (ss.config.tag_urgent_bg, ss.config.tag_urgent_fg),
+                    TagState::Focused => (ss.config.tag_focused_bg, ss.config.tag_focused_fg),
+                    TagState::Active => (ss.config.tag_bg, ss.config.tag_fg),
+                    TagState::Inactive => {
+                        if ss.config.hide_inactive_tags {
+                            continue;
+                        }
+                        (ss.config.tag_inactive_bg, ss.config.tag_inactive_fg)
+                    }
                 };
                 label.render(
                     &cairo_ctx,
@@ -167,6 +171,7 @@ impl Bar {
                         overlap: 0.0,
                     },
                 );
+                self.tags_btns.push(offset_left, label.width, i);
                 offset_left += label.width;
             }
         }

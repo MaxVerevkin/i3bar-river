@@ -96,6 +96,14 @@ pub trait RiverStatusHandler: Sized {
         output_status: &RiverOutputStatus,
         urgent: u32,
     );
+
+    fn views_tags_updated(
+        &mut self,
+        conn: &Connection,
+        qh: &QueueHandle<Self>,
+        output_status: &RiverOutputStatus,
+        tags: Vec<u32>,
+    );
 }
 
 #[derive(Debug, Clone)]

@@ -5,15 +5,17 @@ use pangocairo::{cairo, pango};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TagState {
-    Focused,
-    Inactive,
     Urgent,
+    Focused,
+    Active,
+    Inactive,
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct TagsInfo {
     pub focused: u32,
     pub urgent: u32,
+    pub active: u32,
 }
 
 impl TagsInfo {
@@ -22,6 +24,8 @@ impl TagsInfo {
             TagState::Urgent
         } else if self.focused >> tag & 1 == 1 {
             TagState::Focused
+        } else if self.active >> tag & 1 == 1 {
+            TagState::Active
         } else {
             TagState::Inactive
         }
