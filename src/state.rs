@@ -45,9 +45,15 @@ pub struct State {
     river_status_state: RiverStatusState,
     river_control_state: RiverControlState,
 
-    pointers: Vec<(wl_pointer::WlPointer, wl_seat::WlSeat)>,
+    seats: Vec<Seat>,
     bars: Vec<Bar>,
     pub shared_state: Option<SharedState>,
+}
+
+struct Seat {
+    seat: wl_seat::WlSeat,
+    pointer: wl_pointer::WlPointer,
+    finger_scroll: f64,
 }
 
 impl State {
@@ -77,7 +83,7 @@ impl State {
             river_status_state: RiverStatusState::new(),
             river_control_state: RiverControlState::new(),
 
-            pointers: Vec::new(),
+            seats: Vec::new(),
             bars: Vec::new(),
             shared_state: None,
         };
@@ -269,7 +275,11 @@ impl SeatHandler for State {
                 .seat_state
                 .get_pointer(qh, &seat)
                 .expect("Failed to create pointer");
-            self.pointers.push((pointer, seat));
+            self.seats.push(Seat {
+                seat,
+                pointer,
+                finger_scroll: 0.0,
+            });
         }
     }
 
@@ -281,7 +291,7 @@ impl SeatHandler for State {
         capability: Capability,
     ) {
         if capability == Capability::Pointer {
-            self.pointers.retain(|p| p.1 == seat);
+            self.seats.retain(|p| p.seat == seat);
         }
     }
 
@@ -296,7 +306,12 @@ impl PointerHandler for State {
         pointer: &wl_pointer::WlPointer,
         events: &[PointerEvent],
     ) {
-        let seat = &self.pointers.iter().find(|p| &p.0 == pointer).unwrap().1;
+        let seat = self
+            .seats
+            .iter_mut()
+            .find(|p| &p.pointer == pointer)
+            .unwrap();
+        let shared_state = self.shared_state.as_mut().unwrap();
         for event in events {
             if let Some(bar) = self
                 .bars
@@ -309,23 +324,46 @@ impl PointerHandler for State {
                     }
                     PointerEventKind::Press { button, .. } => {
                         bar.click(
-                            self.shared_state.as_mut().unwrap(),
+                            shared_state,
                             button.into(),
-                            seat,
+                            &seat.seat,
                             event.position.0,
                             event.position.1,
                         )
                         .unwrap();
                     }
-                    PointerEventKind::Axis { vertical, .. } => {
-                        bar.click(
-                            self.shared_state.as_mut().unwrap(),
-                            if vertical.discrete > 0 {
-                                PointerBtn::WheelDown
+                    PointerEventKind::Axis {
+                        vertical, source, ..
+                    } => {
+                        if source == Some(wl_pointer::AxisSource::Finger) {
+                            if shared_state.config.invert_touchpad_scrolling {
+                                seat.finger_scroll -= vertical.absolute;
                             } else {
-                                PointerBtn::WheelUp
-                            },
-                            seat,
+                                seat.finger_scroll += vertical.absolute;
+                            }
+                            if vertical.stop {
+                                seat.finger_scroll = 0.0;
+                            }
+                        }
+
+                        let btn = if vertical.discrete > 0 {
+                            PointerBtn::WheelDown
+                        } else if vertical.discrete < 0 {
+                            PointerBtn::WheelUp
+                        } else if seat.finger_scroll >= 15.0 {
+                            seat.finger_scroll = 0.0;
+                            PointerBtn::WheelDown
+                        } else if seat.finger_scroll <= -15.0 {
+                            seat.finger_scroll = 0.0;
+                            PointerBtn::WheelUp
+                        } else {
+                            continue;
+                        };
+
+                        bar.click(
+                            shared_state,
+                            btn,
+                            &seat.seat,
                             event.position.0,
                             event.position.1,
                         )

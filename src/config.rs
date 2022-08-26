@@ -33,6 +33,7 @@ pub struct Config {
     pub command: Option<String>,
     // misc
     pub hide_inactive_tags: bool,
+    pub invert_touchpad_scrolling: bool,
 }
 
 impl Default for Config {
@@ -57,7 +58,8 @@ impl Default for Config {
             blocks_r: 0.0,
             blocks_overlap: 0.0,
             command: None,
-            hide_inactive_tags: false,
+            hide_inactive_tags: true,
+            invert_touchpad_scrolling: true,
         }
     }
 }
