@@ -50,7 +50,7 @@ async fn main() -> anyhow::Result<()> {
             readable = state.wait_for_status_cmd() => {
                 readable?.clear_ready();
                 if let Err(e) = state.notify_available() {
-                    if let Some(mut status_cmd) = state.shared_state.as_mut().unwrap().status_cmd.take() {
+                    if let Some(mut status_cmd) = state.shared_state.status_cmd.take() {
                         let _ = status_cmd.child.kill();
                     }
                     state.set_error(e.to_string());

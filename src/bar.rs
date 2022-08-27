@@ -95,7 +95,7 @@ impl Bar {
         let height_f = height as f64;
 
         let (buffer, canvas) = ss
-            .pool
+            .get_pool(height as usize * stride as usize)
             .create_buffer(
                 width * self.scale,
                 height * self.scale,

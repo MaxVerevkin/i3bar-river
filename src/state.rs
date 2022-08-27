@@ -16,7 +16,7 @@ use smithay_client_toolkit::{
         Capability, SeatHandler, SeatState,
     },
     shell::layer::{Anchor, Layer, LayerHandler, LayerState, LayerSurface, LayerSurfaceConfigure},
-    shm::{slot::SlotPool, ShmHandler, ShmState},
+    shm::{ShmHandler, ShmState},
 };
 use tokio::io::unix::AsyncFdReadyGuard;
 
@@ -40,14 +40,13 @@ pub struct State {
     seat_state: SeatState,
     output_state: OutputState,
     compositor_state: CompositorState,
-    shm_state: ShmState,
     layer_state: LayerState,
     river_status_state: RiverStatusState,
     river_control_state: RiverControlState,
 
     seats: Vec<Seat>,
     bars: Vec<Bar>,
-    pub shared_state: Option<SharedState>,
+    pub shared_state: SharedState,
 }
 
 struct Seat {
@@ -78,28 +77,22 @@ impl State {
             seat_state: SeatState::new(),
             output_state: OutputState::new(),
             compositor_state: CompositorState::new(),
-            shm_state: ShmState::new(),
             layer_state: LayerState::new(),
             river_status_state: RiverStatusState::new(),
             river_control_state: RiverControlState::new(),
 
             seats: Vec::new(),
             bars: Vec::new(),
-            shared_state: None,
+            shared_state: SharedState {
+                qh: event_queue.handle(),
+                shm_state: ShmState::new(),
+                pool: None,
+                config,
+                status_cmd,
+                blocks: Vec::new(),
+                blocks_cache: Vec::new(),
+            },
         };
-
-        while !this.registry_state.ready() {
-            event_queue.blocking_dispatch(&mut this).unwrap();
-        }
-
-        this.shared_state = Some(SharedState {
-            qh: event_queue.handle(),
-            pool: SlotPool::new(1, &this.shm_state).expect("Failed to create pool"),
-            config,
-            status_cmd,
-            blocks: Vec::new(),
-            blocks_cache: Vec::new(),
-        });
 
         if let Err(e) = error {
             this.set_error(e.to_string());
@@ -109,7 +102,7 @@ impl State {
     }
 
     pub fn set_blocks(&mut self, blocks: Vec<Block>) {
-        self.shared_state.as_mut().unwrap().blocks = blocks;
+        self.shared_state.blocks = blocks;
         self.draw_all();
     }
 
@@ -121,7 +114,7 @@ impl State {
     }
 
     pub fn notify_available(&mut self) -> anyhow::Result<()> {
-        if let Some(cmd) = &mut self.shared_state.as_mut().unwrap().status_cmd {
+        if let Some(cmd) = &mut self.shared_state.status_cmd {
             if let Some(blocks) = cmd.notify_available()? {
                 self.set_blocks(blocks);
             }
@@ -131,12 +124,12 @@ impl State {
 
     pub fn draw_all(&mut self) {
         for bar in &mut self.bars {
-            bar.draw(self.shared_state.as_mut().unwrap());
+            bar.draw(&mut self.shared_state);
         }
     }
 
     pub async fn wait_for_status_cmd(&self) -> io::Result<AsyncFdReadyGuard<i32>> {
-        match &self.shared_state.as_ref().unwrap().status_cmd {
+        match &self.shared_state.status_cmd {
             Some(cmd) => cmd.async_fd.readable().await,
             None => {
                 pending::<()>().await;
@@ -164,7 +157,7 @@ impl CompositorHandler for State {
             .find(|bar| bar.layer.wl_surface() == surface)
         {
             bar.scale = scale;
-            bar.draw(self.shared_state.as_mut().expect("no shared_state?"));
+            bar.draw(&mut self.shared_state);
         }
     }
 
@@ -189,7 +182,7 @@ impl OutputHandler for State {
         qh: &QueueHandle<Self>,
         output: wl_output::WlOutput,
     ) {
-        let height = self.shared_state.as_ref().unwrap().config.height;
+        let height = self.shared_state.config.height;
         let surface = self.compositor_state.create_surface(qh).unwrap();
         let layer = LayerSurface::builder()
             .output(&output)
@@ -252,7 +245,7 @@ impl LayerHandler for State {
             .iter_mut()
             .find(|b| &b.layer == layer)
             .unwrap()
-            .configure(self.shared_state.as_mut().unwrap(), configure.new_size.0);
+            .configure(&mut self.shared_state, configure.new_size.0);
     }
 }
 
@@ -311,7 +304,6 @@ impl PointerHandler for State {
             .iter_mut()
             .find(|p| &p.pointer == pointer)
             .unwrap();
-        let shared_state = self.shared_state.as_mut().unwrap();
         for event in events {
             if let Some(bar) = self
                 .bars
@@ -324,7 +316,7 @@ impl PointerHandler for State {
                     }
                     PointerEventKind::Press { button, .. } => {
                         bar.click(
-                            shared_state,
+                            &mut self.shared_state,
                             button.into(),
                             &seat.seat,
                             event.position.0,
@@ -336,7 +328,7 @@ impl PointerHandler for State {
                         vertical, source, ..
                     } => {
                         if source == Some(wl_pointer::AxisSource::Finger) {
-                            if shared_state.config.invert_touchpad_scrolling {
+                            if self.shared_state.config.invert_touchpad_scrolling {
                                 seat.finger_scroll -= vertical.absolute;
                             } else {
                                 seat.finger_scroll += vertical.absolute;
@@ -361,7 +353,7 @@ impl PointerHandler for State {
                         };
 
                         bar.click(
-                            shared_state,
+                            &mut self.shared_state,
                             btn,
                             &seat.seat,
                             event.position.0,
@@ -378,7 +370,7 @@ impl PointerHandler for State {
 
 impl ShmHandler for State {
     fn shm_state(&mut self) -> &mut ShmState {
-        &mut self.shm_state
+        &mut self.shared_state.shm_state
     }
 }
 
@@ -400,7 +392,7 @@ impl RiverStatusHandler for State {
             .find(|b| b.river_output_status.as_ref() == Some(output_status))
             .unwrap();
         bar.tags_info.focused = focused;
-        bar.draw(self.shared_state.as_mut().unwrap());
+        bar.draw(&mut self.shared_state);
     }
 
     fn urgent_tags_updated(
@@ -416,7 +408,7 @@ impl RiverStatusHandler for State {
             .find(|b| b.river_output_status.as_ref() == Some(output_status))
             .unwrap();
         bar.tags_info.urgent = urgent;
-        bar.draw(self.shared_state.as_mut().unwrap());
+        bar.draw(&mut self.shared_state);
     }
 
     fn views_tags_updated(
@@ -432,7 +424,7 @@ impl RiverStatusHandler for State {
             .find(|b| b.river_output_status.as_ref() == Some(output_status))
             .unwrap();
         bar.tags_info.active = tags.into_iter().fold(0, |a, b| a | b);
-        bar.draw(self.shared_state.as_mut().unwrap());
+        bar.draw(&mut self.shared_state);
     }
 }
 
