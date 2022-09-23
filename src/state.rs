@@ -189,7 +189,7 @@ impl OutputHandler for State {
             .size((0, height))
             .anchor(Anchor::TOP | Anchor::LEFT | Anchor::RIGHT)
             .namespace("i3bar-river")
-            .map(qh, &mut self.layer_state, surface, Layer::Top)
+            .map(qh, &self.layer_state, surface, Layer::Top)
             .expect("layer surface creation");
         let river_output_status = self.river_status_state.new_output_status(qh, &output).ok();
         self.bars.push(Bar {

@@ -18,6 +18,8 @@ mod tags;
 mod text;
 mod utils;
 
+use std::os::unix::io::AsRawFd;
+
 use smithay_client_toolkit::reexports::client::Connection;
 use tokio::io::{unix::AsyncFd, Interest};
 
@@ -32,12 +34,11 @@ async fn main() -> anyhow::Result<()> {
     let mut state = State::new(&conn, &mut event_queue);
 
     let async_fd = AsyncFd::with_interest(
-        event_queue.prepare_read()?.connection_fd(),
+        event_queue.prepare_read()?.connection_fd().as_raw_fd(),
         Interest::READABLE,
     )?;
 
     event_queue.roundtrip(&mut state)?;
-    event_queue.flush()?;
 
     loop {
         tokio::select! {

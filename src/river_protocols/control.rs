@@ -60,7 +60,7 @@ impl RiverControlState {
         for arg in args {
             control.add_argument(arg.into());
         }
-        control.run_command(seat, qh, RiverCommandCallbackData {})?;
+        control.run_command(seat, qh, RiverCommandCallbackData {});
         Ok(())
     }
 }
@@ -82,8 +82,10 @@ pub struct RiverCommandCallbackData {
 macro_rules! delegate_river_control {
     ($ty: ty) => {
         ::smithay_client_toolkit::reexports::client::delegate_dispatch!($ty: [
-            $crate::river_protocols::control::protocol::zriver_control_v1::ZriverControlV1: ::smithay_client_toolkit::globals::GlobalData,
-            $crate::river_protocols::control::protocol::zriver_command_callback_v1::ZriverCommandCallbackV1: $crate::river_protocols::control::RiverCommandCallbackData,
+            $crate::river_protocols::control::protocol::zriver_control_v1::ZriverControlV1: ::smithay_client_toolkit::globals::GlobalData
+        ] => $crate::river_protocols::control::RiverControlState);
+        ::smithay_client_toolkit::reexports::client::delegate_dispatch!($ty: [
+            $crate::river_protocols::control::protocol::zriver_command_callback_v1::ZriverCommandCallbackV1: $crate::river_protocols::control::RiverCommandCallbackData
         ] => $crate::river_protocols::control::RiverControlState);
     };
 }

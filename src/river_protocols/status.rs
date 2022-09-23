@@ -66,7 +66,7 @@ impl RiverStatusState {
             + 'static,
     {
         let manager = self.status_manager()?;
-        let output_status = manager.get_river_output_status(output, qh, RiverStatusData {})?;
+        let output_status = manager.get_river_output_status(output, qh, RiverStatusData {});
 
         let output_status = RiverOutputStatus(Arc::new(OutputStatusInner {
             status: output_status,
@@ -124,8 +124,10 @@ pub struct RiverStatusData {
 macro_rules! delegate_river_status {
     ($ty: ty) => {
         ::smithay_client_toolkit::reexports::client::delegate_dispatch!($ty: [
-            $crate::river_protocols::status::protocol::zriver_status_manager_v1::ZriverStatusManagerV1: ::smithay_client_toolkit::globals::GlobalData,
-            $crate::river_protocols::status::protocol::zriver_output_status_v1::ZriverOutputStatusV1: $crate::river_protocols::status::RiverStatusData,
+            $crate::river_protocols::status::protocol::zriver_status_manager_v1::ZriverStatusManagerV1: ::smithay_client_toolkit::globals::GlobalData
+        ] => $crate::river_protocols::status::RiverStatusState);
+        ::smithay_client_toolkit::reexports::client::delegate_dispatch!($ty: [
+            $crate::river_protocols::status::protocol::zriver_output_status_v1::ZriverOutputStatusV1: $crate::river_protocols::status::RiverStatusData
         ] => $crate::river_protocols::status::RiverStatusState);
     };
 }
