@@ -120,8 +120,11 @@ impl Bar {
         self.layer.wl_surface().set_buffer_scale(self.scale);
 
         // Background
+        cairo_ctx.save().unwrap();
+        cairo_ctx.set_operator(cairo::Operator::Source);
         ss.config.background.apply(&cairo_ctx);
-        cairo_ctx.paint().expect("cairo paint");
+        cairo_ctx.paint().unwrap();
+        cairo_ctx.restore().unwrap();
 
         // Display tags
         let mut offset_left = 0.0;
