@@ -1,9 +1,8 @@
 use crate::color::Color;
-use pango::{EllipsizeMode, FontDescription};
+use pango::FontDescription;
 use pangocairo::{cairo, pango};
 use serde::Deserialize;
 use std::f64::consts::{FRAC_PI_2, PI, TAU};
-use std::ops::Deref;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct RenderOptions {
@@ -17,8 +16,8 @@ pub struct RenderOptions {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct Attributes {
-    pub font: FontDescription,
+pub struct Attributes<'a> {
+    pub font: &'a FontDescription,
     pub padding_left: f64,
     pub padding_right: f64,
     pub min_width: Option<f64>,
@@ -40,95 +39,54 @@ impl Default for Align {
     }
 }
 
-fn create_pango_layout(cairo_context: &cairo::Context) -> pango::Layout {
-    pangocairo::create_layout(cairo_context).unwrap()
-}
-
-fn show_pango_layout(cairo_context: &cairo::Context, layout: &pango::Layout) {
-    pangocairo::show_layout(cairo_context, layout);
-}
-
 #[derive(Clone, Debug, PartialEq)]
-pub struct Text {
-    pub attr: Attributes,
-    pub text: String,
+pub struct ComputedText {
+    pub width: f64,
+    layout: pango::Layout,
+    height: f64,
+    padding_left: f64,
 }
 
-impl Text {
-    pub fn compute(mut self, context: &cairo::Context) -> ComputedText {
-        let (mut width, height) = {
-            let layout = create_pango_layout(context);
-            layout.set_font_description(Some(&self.attr.font));
-            if self.attr.markup {
-                layout.set_markup(&self.text);
-            } else {
-                layout.set_text(&self.text);
-            }
+impl ComputedText {
+    pub fn new(text: &str, mut attr: Attributes, context: &cairo::Context) -> Self {
+        let layout = pangocairo::create_layout(context);
+        layout.set_font_description(Some(attr.font));
+        if attr.markup {
+            layout.set_markup(text);
+        } else {
+            layout.set_text(text);
+        }
 
-            let (text_width, text_height) = layout.pixel_size();
-            let width = f64::from(text_width) + self.attr.padding_right + self.attr.padding_right;
-            let height = f64::from(text_height);
-            (width, height)
-        };
+        let (text_width, text_height) = layout.pixel_size();
+        let mut width = f64::from(text_width) + attr.padding_right + attr.padding_right;
+        let height = f64::from(text_height);
 
-        if let Some(min_width) = self.attr.min_width {
+        if let Some(min_width) = attr.min_width {
             if width < min_width {
                 let d = min_width - width;
                 width = min_width;
-                match self.attr.align {
-                    Align::Right => self.attr.padding_left += d,
-                    Align::Left => self.attr.padding_right += d,
+                match attr.align {
+                    Align::Right => attr.padding_left += d,
+                    Align::Left => attr.padding_right += d,
                     Align::Center => {
-                        self.attr.padding_left += d * 0.5;
-                        self.attr.padding_right += d * 0.5;
+                        attr.padding_left += d * 0.5;
+                        attr.padding_right += d * 0.5;
                     }
                 }
             }
         }
 
-        ComputedText {
-            text: self,
+        Self {
             width,
+            layout,
             height,
+            padding_left: attr.padding_left,
         }
     }
-}
 
-#[derive(Clone, Debug, PartialEq)]
-pub struct ComputedText {
-    pub text: Text,
-    pub width: f64,
-    pub height: f64,
-}
-
-impl Deref for ComputedText {
-    type Target = str;
-
-    fn deref(&self) -> &Self::Target {
-        &self.text.text
-    }
-}
-
-impl ComputedText {
     pub fn render(&self, context: &cairo::Context, options: RenderOptions) {
-        let text = &self.text;
-        let layout = create_pango_layout(context);
-        layout.set_font_description(Some(&text.attr.font));
-        if text.attr.markup {
-            layout.set_markup(&text.text);
-        } else {
-            layout.set_text(&text.text);
-        }
-
         context.save().unwrap();
         context.translate(options.x_offset - options.overlap, 0.0);
-
-        // Set the width/height on the Pango layout so that it word-wraps/ellipises.
-        let text_width = self.width - text.attr.padding_left - text.attr.padding_right;
-        let text_height = self.height;
-        layout.set_ellipsize(EllipsizeMode::End);
-        layout.set_width(text_width as i32 * pango::SCALE);
-        layout.set_height(text_height as i32 * pango::SCALE);
 
         // Draw background
         if let Some(bg) = options.bg_color {
@@ -147,10 +105,10 @@ impl ComputedText {
 
         options.fg_color.apply(context);
         context.translate(
-            text.attr.padding_left + options.overlap,
+            self.padding_left + options.overlap,
             (options.bar_height - self.height) * 0.5,
         );
-        show_pango_layout(context, &layout);
+        pangocairo::show_layout(context, &self.layout);
         context.restore().unwrap();
     }
 }
@@ -177,16 +135,17 @@ fn rounded_rectangle(
 }
 
 pub fn width_of(text: &str, context: &cairo::Context, markup: bool, font: &FontDescription) -> f64 {
-    let text = Text {
-        text: text.into(),
-        attr: Attributes {
-            font: font.clone(),
+    ComputedText::new(
+        text,
+        Attributes {
+            font,
             padding_left: 0.0,
             padding_right: 0.0,
             min_width: None,
             align: Default::default(),
             markup,
         },
-    };
-    text.compute(context).width
+        context,
+    )
+    .width
 }
