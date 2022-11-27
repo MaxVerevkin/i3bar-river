@@ -27,7 +27,7 @@ pub struct Bar {
     pub layer: LayerSurface,
     pub blocks_btns: ButtonManager<(Option<String>, Option<String>)>,
     pub river_output_status: Option<RiverOutputStatus>,
-    pub river_control: RiverControlState,
+    pub river_control: Option<RiverControlState>,
     pub tags_btns: ButtonManager,
     pub tags_info: TagsInfo,
     pub tags_computed: Vec<ComputedText>,
@@ -58,17 +58,13 @@ impl Bar {
         _y: f64,
     ) -> anyhow::Result<()> {
         if let Some(tag) = self.tags_btns.click(x) {
-            if self.river_control.is_available() {
+            if let Some(river_control) = &self.river_control {
                 let cmd = match button {
                     PointerBtn::Left => "set-focused-tags",
                     PointerBtn::Right => "toggle-focused-tags",
                     _ => return Ok(()),
                 };
-                self.river_control.run_command(
-                    &ss.qh,
-                    seat,
-                    [cmd.into(), (1u32 << tag).to_string()],
-                )?;
+                river_control.run_command(&ss.qh, seat, [cmd.into(), (1u32 << tag).to_string()]);
             }
         } else if let Some((name, instance)) = self.blocks_btns.click(x) {
             if let Some(cmd) = &mut ss.status_cmd {

@@ -49,7 +49,7 @@ pub struct ComputedText {
 
 impl ComputedText {
     pub fn new(text: &str, mut attr: Attributes, context: &cairo::Context) -> Self {
-        let layout = pangocairo::create_layout(context).unwrap();
+        let layout = pangocairo::create_layout(context);
         layout.set_font_description(Some(attr.font));
         if attr.markup {
             layout.set_markup(text);

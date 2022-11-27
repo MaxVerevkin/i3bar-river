@@ -24,14 +24,15 @@ use smithay_client_toolkit::reexports::client::Connection;
 use tokio::io::{unix::AsyncFd, Interest};
 
 use state::State;
+use wayland_client::globals::registry_queue_init;
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> anyhow::Result<()> {
     env_logger::init();
 
     let conn = Connection::connect_to_env()?;
-    let mut event_queue = conn.new_event_queue();
-    let mut state = State::new(&conn, &mut event_queue);
+    let (globals, mut event_queue) = registry_queue_init(&conn).unwrap();
+    let mut state = State::new(&mut event_queue, &globals);
 
     let async_fd = AsyncFd::with_interest(
         event_queue.prepare_read()?.connection_fd().as_raw_fd(),

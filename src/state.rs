@@ -12,13 +12,16 @@ use smithay_client_toolkit::{
     registry::{ProvidesRegistryState, RegistryState},
     registry_handlers,
     seat::{
-        pointer::{PointerEvent, PointerEventKind, PointerHandler},
+        pointer::{PointerEvent, PointerEventKind, PointerHandler, ThemeSpec, ThemedPointer},
         Capability, SeatHandler, SeatState,
     },
-    shell::layer::{Anchor, Layer, LayerHandler, LayerState, LayerSurface, LayerSurfaceConfigure},
+    shell::layer::{
+        Anchor, Layer, LayerShell, LayerShellHandler, LayerSurface, LayerSurfaceConfigure,
+    },
     shm::{ShmHandler, ShmState},
 };
 use tokio::io::unix::AsyncFdReadyGuard;
+use wayland_client::globals::GlobalList;
 
 use crate::{
     bar::Bar,
@@ -40,9 +43,9 @@ pub struct State {
     seat_state: SeatState,
     output_state: OutputState,
     compositor_state: CompositorState,
-    layer_state: LayerState,
-    river_status_state: RiverStatusState,
-    river_control_state: RiverControlState,
+    layer_state: LayerShell,
+    river_status_state: Option<RiverStatusState>,
+    river_control_state: Option<RiverControlState>,
 
     seats: Vec<Seat>,
     bars: Vec<Bar>,
@@ -52,12 +55,16 @@ pub struct State {
 struct Seat {
     seat: wl_seat::WlSeat,
     pointer: wl_pointer::WlPointer,
+    themed_pointer: ThemedPointer,
+    pointer_surface: wl_surface::WlSurface,
     finger_scroll: f64,
 }
 
 impl State {
-    pub fn new(conn: &Connection, event_queue: &mut EventQueue<Self>) -> Self {
+    pub fn new(event_queue: &mut EventQueue<Self>, globals: &GlobalList) -> Self {
         let mut error = Ok(());
+
+        let qh = event_queue.handle();
 
         let config = Config::new()
             .map_err(|e| error = Err(e))
@@ -73,19 +80,19 @@ impl State {
         };
 
         let mut this = Self {
-            registry_state: RegistryState::new(conn, &event_queue.handle()),
-            seat_state: SeatState::new(),
-            output_state: OutputState::new(),
-            compositor_state: CompositorState::new(),
-            layer_state: LayerState::new(),
-            river_status_state: RiverStatusState::new(),
-            river_control_state: RiverControlState::new(),
+            registry_state: RegistryState::new(globals),
+            seat_state: SeatState::new(globals, &qh),
+            output_state: OutputState::new(globals, &qh),
+            compositor_state: CompositorState::bind(globals, &qh).unwrap(),
+            layer_state: LayerShell::bind(globals, &qh).unwrap(),
+            river_status_state: RiverStatusState::new(globals, &qh).ok(),
+            river_control_state: RiverControlState::new(globals, &qh).ok(),
 
             seats: Vec::new(),
             bars: Vec::new(),
             shared_state: SharedState {
                 qh: event_queue.handle(),
-                shm_state: ShmState::new(),
+                shm_state: ShmState::bind(globals, &qh).unwrap(),
                 pool: None,
                 config,
                 status_cmd,
@@ -140,10 +147,6 @@ impl State {
 }
 
 impl CompositorHandler for State {
-    fn compositor_state(&mut self) -> &mut CompositorState {
-        &mut self.compositor_state
-    }
-
     fn scale_factor_changed(
         &mut self,
         _conn: &Connection,
@@ -191,7 +194,10 @@ impl OutputHandler for State {
             .namespace("i3bar-river")
             .map(qh, &self.layer_state, surface, Layer::Top)
             .expect("layer surface creation");
-        let river_output_status = self.river_status_state.new_output_status(qh, &output).ok();
+        let river_output_status = self
+            .river_status_state
+            .as_mut()
+            .map(|s| s.new_output_status(qh, &output));
         self.bars.push(Bar {
             configured: false,
             width: 0,
@@ -224,11 +230,7 @@ impl OutputHandler for State {
     }
 }
 
-impl LayerHandler for State {
-    fn layer_state(&mut self) -> &mut LayerState {
-        &mut self.layer_state
-    }
-
+impl LayerShellHandler for State {
     fn closed(&mut self, _conn: &Connection, _qh: &QueueHandle<Self>, layer: &LayerSurface) {
         self.bars.retain(|b| &b.layer != layer)
     }
@@ -264,13 +266,15 @@ impl SeatHandler for State {
         capability: Capability,
     ) {
         if capability == Capability::Pointer {
-            let pointer = self
+            let (pointer, themed_pointer) = self
                 .seat_state
-                .get_pointer(qh, &seat)
+                .get_pointer_with_theme(qh, &seat, ThemeSpec::System, 1)
                 .expect("Failed to create pointer");
             self.seats.push(Seat {
                 seat,
                 pointer,
+                themed_pointer,
+                pointer_surface: self.compositor_state.create_surface(qh).unwrap(), // TODO: make a PR to remove this unwrap
                 finger_scroll: 0.0,
             });
         }
@@ -294,7 +298,7 @@ impl SeatHandler for State {
 impl PointerHandler for State {
     fn pointer_frame(
         &mut self,
-        _conn: &Connection,
+        conn: &Connection,
         _qh: &QueueHandle<Self>,
         pointer: &wl_pointer::WlPointer,
         events: &[PointerEvent],
@@ -312,7 +316,14 @@ impl PointerHandler for State {
             {
                 match event.kind {
                     PointerEventKind::Enter { .. } => {
-                        // TODO: set_cursor()
+                        seat.themed_pointer
+                            .set_cursor(
+                                conn,
+                                "default",
+                                self.shared_state.shm_state.wl_shm(),
+                                &seat.pointer_surface,
+                            )
+                            .unwrap();
                     }
                     PointerEventKind::Press { button, .. } => {
                         bar.click(
@@ -376,7 +387,7 @@ impl ShmHandler for State {
 
 impl RiverStatusHandler for State {
     fn river_status_state(&mut self) -> &mut RiverStatusState {
-        &mut self.river_status_state
+        self.river_status_state.as_mut().unwrap()
     }
 
     fn focused_tags_updated(
@@ -430,7 +441,7 @@ impl RiverStatusHandler for State {
 
 impl RiverControlHandler for State {
     fn river_control_state(&mut self) -> &mut RiverControlState {
-        &mut self.river_control_state
+        self.river_control_state.as_mut().unwrap()
     }
 
     fn command_failure(&mut self, _: &Connection, _: &QueueHandle<Self>, message: String) {
@@ -456,15 +467,7 @@ impl ProvidesRegistryState for State {
     fn registry(&mut self) -> &mut RegistryState {
         &mut self.registry_state
     }
-    registry_handlers![
-        CompositorState,
-        OutputState,
-        ShmState,
-        SeatState,
-        LayerState,
-        RiverStatusState,
-        RiverControlState,
-    ];
+    registry_handlers![OutputState,];
 }
 
 #[derive(Debug)]
