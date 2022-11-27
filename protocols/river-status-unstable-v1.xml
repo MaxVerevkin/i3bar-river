@@ -16,7 +16,7 @@
     OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
   </copyright>
 
-  <interface name="zriver_status_manager_v1" version="2">
+  <interface name="zriver_status_manager_v1" version="3">
     <description summary="manage river status objects">
       A global factory for objects that receive status information specific
       to river. It could be used to implement, for example, a status bar.
@@ -47,7 +47,7 @@
     </request>
   </interface>
 
-  <interface name="zriver_output_status_v1" version="2">
+  <interface name="zriver_output_status_v1" version="3">
     <description summary="track output tags and focus">
       This interface allows clients to receive information about the current
       windowing state of an output.
@@ -83,9 +83,24 @@
       </description>
       <arg name="tags" type="uint" summary="32-bit bitfield"/>
     </event>
+
+    <event name="layout_name" since="3">
+      <description summary="name of the layout">
+        Sent once on binding the interface should a layout name exist and again
+        whenever the name changes.
+      </description>
+      <arg name="name" type="string" summary="layout name"/>
+    </event>
+
+    <event name="layout_name_clear" since="3">
+      <description summary="name of the layout">
+        Sent when the current layout name has been removed without a new one
+        being set, for example whent the active layout generator disconnects.
+      </description>
+    </event>
   </interface>
 
-  <interface name="zriver_seat_status_v1" version="1">
+  <interface name="zriver_seat_status_v1" version="3">
     <description summary="track seat focus">
       This interface allows clients to receive information about the current
       focus of a seat. Note that (un)focused_output events will only be sent
@@ -120,6 +135,14 @@
         if no view is focused or the focused view did not set a title.
       </description>
       <arg name="title" type="string" summary="title of the focused view"/>
+    </event>
+
+    <event name="mode" since="3">
+      <description summary="the active mode changed">
+        Sent once on binding the interface and again whenever a new mode
+        is entered (e.g. with riverctl enter-mode foobar).
+      </description>
+      <arg name="name" type="string" summary="name of the mode"/>
     </event>
   </interface>
 </protocol>

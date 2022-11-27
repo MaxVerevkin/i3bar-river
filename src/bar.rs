@@ -28,6 +28,7 @@ pub struct Bar {
     pub blocks_btns: ButtonManager<(Option<String>, Option<String>)>,
     pub river_output_status: Option<RiverOutputStatus>,
     pub river_control: Option<RiverControlState>,
+    pub layout_name: Option<String>,
     pub tags_btns: ButtonManager,
     pub tags_info: TagsInfo,
     pub tags_computed: Vec<ComputedText>,
@@ -170,6 +171,35 @@ impl Bar {
                 self.tags_btns.push(offset_left, label.width, i);
                 offset_left += label.width;
             }
+        }
+
+        // Display layout name
+        if let Some(layout_name) = &self.layout_name {
+            let text = ComputedText::new(
+                layout_name,
+                text::Attributes {
+                    font: &ss.config.font,
+                    padding_left: 25.0,
+                    padding_right: 25.0,
+                    min_width: None,
+                    align: Default::default(),
+                    markup: false,
+                },
+                &cairo_ctx,
+            );
+            text.render(
+                &cairo_ctx,
+                RenderOptions {
+                    x_offset: offset_left,
+                    bar_height: height_f,
+                    fg_color: ss.config.tag_inactive_fg,
+                    bg_color: None,
+                    r_left: 0.0,
+                    r_right: 0.0,
+                    overlap: 0.0,
+                },
+            );
+            offset_left += text.width;
         }
 
         // Display the blocks

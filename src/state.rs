@@ -207,6 +207,7 @@ impl OutputHandler for State {
             blocks_btns: Default::default(),
             river_output_status,
             river_control: self.river_control_state.clone(),
+            layout_name: None,
             tags_btns: Default::default(),
             tags_info: Default::default(),
             tags_computed: Vec::new(),
@@ -435,6 +436,22 @@ impl RiverStatusHandler for State {
             .find(|b| b.river_output_status.as_ref() == Some(output_status))
             .unwrap();
         bar.tags_info.active = tags.into_iter().fold(0, |a, b| a | b);
+        bar.draw(&mut self.shared_state);
+    }
+
+    fn layout_name_updated(
+        &mut self,
+        _conn: &Connection,
+        _qh: &QueueHandle<Self>,
+        output_status: &RiverOutputStatus,
+        layout_name: Option<String>,
+    ) {
+        let bar = self
+            .bars
+            .iter_mut()
+            .find(|b| b.river_output_status.as_ref() == Some(output_status))
+            .unwrap();
+        bar.layout_name = layout_name;
         bar.draw(&mut self.shared_state);
     }
 }

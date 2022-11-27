@@ -19,7 +19,7 @@ impl RiverStatusState {
     where
         D: Dispatch<zriver_status_manager_v1::ZriverStatusManagerV1, (), D> + 'static,
     {
-        let status_manager = globals.bind(qh, 1..=1, ())?;
+        let status_manager = globals.bind(qh, 1..=3, ())?;
         Ok(Self {
             status_manager,
             output_statuses: Vec::new(),
@@ -87,6 +87,14 @@ pub trait RiverStatusHandler: Sized {
         qh: &QueueHandle<Self>,
         output_status: &RiverOutputStatus,
         tags: Vec<u32>,
+    );
+
+    fn layout_name_updated(
+        &mut self,
+        conn: &Connection,
+        qh: &QueueHandle<Self>,
+        output_status: &RiverOutputStatus,
+        layout_name: Option<String>,
     );
 }
 
@@ -176,6 +184,10 @@ where
                         .collect();
                     data.views_tags_updated(conn, qh, &status, tags);
                 }
+                Event::LayoutName { name } => {
+                    data.layout_name_updated(conn, qh, &status, Some(name))
+                }
+                Event::LayoutNameClear => data.layout_name_updated(conn, qh, &status, None),
             }
         }
     }
