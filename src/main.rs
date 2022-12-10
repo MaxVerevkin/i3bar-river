@@ -39,8 +39,6 @@ async fn main() -> anyhow::Result<()> {
         Interest::READABLE,
     )?;
 
-    event_queue.roundtrip(&mut state)?;
-
     loop {
         tokio::select! {
             readable = async_fd.readable() => {

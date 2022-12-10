@@ -18,7 +18,7 @@ use smithay_client_toolkit::{
     shell::layer::{
         Anchor, Layer, LayerShell, LayerShellHandler, LayerSurface, LayerSurfaceConfigure,
     },
-    shm::{ShmHandler, ShmState},
+    shm::{slot::SlotPool, ShmHandler, ShmState},
 };
 use tokio::io::unix::AsyncFdReadyGuard;
 use wayland_client::globals::GlobalList;
@@ -31,7 +31,7 @@ use crate::{
     pointer_btn::PointerBtn,
     river_protocols::{
         control::{RiverControlHandler, RiverControlState},
-        status::{RiverOutputStatus, RiverStatusHandler, RiverStatusState},
+        status::{RiverStatusHandler, RiverStatusState},
     },
     shared_state::SharedState,
     status_cmd::StatusCmd,
@@ -40,6 +40,7 @@ use crate::{
 
 pub struct State {
     registry_state: RegistryState,
+    shm_state: ShmState,
     seat_state: SeatState,
     output_state: OutputState,
     compositor_state: CompositorState,
@@ -79,8 +80,12 @@ impl State {
             }),
         };
 
+        let shm_state = ShmState::bind(globals, &qh).unwrap();
+        let pool = SlotPool::new(1024, &shm_state).expect("Failed to create pool");
+
         let mut this = Self {
             registry_state: RegistryState::new(globals),
+            shm_state,
             seat_state: SeatState::new(globals, &qh),
             output_state: OutputState::new(globals, &qh),
             compositor_state: CompositorState::bind(globals, &qh).unwrap(),
@@ -92,8 +97,7 @@ impl State {
             bars: Vec::new(),
             shared_state: SharedState {
                 qh: event_queue.handle(),
-                shm_state: ShmState::bind(globals, &qh).unwrap(),
-                pool: None,
+                pool,
                 config,
                 status_cmd,
                 blocks: Vec::new(),
@@ -186,7 +190,7 @@ impl OutputHandler for State {
         output: wl_output::WlOutput,
     ) {
         let height = self.shared_state.config.height;
-        let surface = self.compositor_state.create_surface(qh).unwrap();
+        let surface = self.compositor_state.create_surface(qh);
         let layer = LayerSurface::builder()
             .output(&output)
             .size((0, height))
@@ -199,6 +203,7 @@ impl OutputHandler for State {
             .as_mut()
             .map(|s| s.new_output_status(qh, &output));
         self.bars.push(Bar {
+            output,
             configured: false,
             width: 0,
             height,
@@ -208,6 +213,7 @@ impl OutputHandler for State {
             river_output_status,
             river_control: self.river_control_state.clone(),
             layout_name: None,
+            layout_name_computed: None,
             tags_btns: Default::default(),
             tags_info: Default::default(),
             tags_computed: Vec::new(),
@@ -275,7 +281,7 @@ impl SeatHandler for State {
                 seat,
                 pointer,
                 themed_pointer,
-                pointer_surface: self.compositor_state.create_surface(qh).unwrap(), // TODO: make a PR to remove this unwrap
+                pointer_surface: self.compositor_state.create_surface(qh),
                 finger_scroll: 0.0,
             });
         }
@@ -321,7 +327,7 @@ impl PointerHandler for State {
                             .set_cursor(
                                 conn,
                                 "default",
-                                self.shared_state.shm_state.wl_shm(),
+                                self.shm_state.wl_shm(),
                                 &seat.pointer_surface,
                             )
                             .unwrap();
@@ -382,7 +388,7 @@ impl PointerHandler for State {
 
 impl ShmHandler for State {
     fn shm_state(&mut self) -> &mut ShmState {
-        &mut self.shared_state.shm_state
+        &mut self.shm_state
     }
 }
 
@@ -391,67 +397,27 @@ impl RiverStatusHandler for State {
         self.river_status_state.as_mut().unwrap()
     }
 
-    fn focused_tags_updated(
-        &mut self,
-        _conn: &Connection,
-        _qh: &QueueHandle<Self>,
-        output_status: &RiverOutputStatus,
-        focused: u32,
-    ) {
-        let bar = self
-            .bars
-            .iter_mut()
-            .find(|b| b.river_output_status.as_ref() == Some(output_status))
-            .unwrap();
+    fn focused_tags_updated(&mut self, output: &wl_output::WlOutput, focused: u32) {
+        let bar = self.bars.iter_mut().find(|b| &b.output == output).unwrap();
         bar.tags_info.focused = focused;
         bar.draw(&mut self.shared_state);
     }
 
-    fn urgent_tags_updated(
-        &mut self,
-        _conn: &Connection,
-        _qh: &QueueHandle<Self>,
-        output_status: &RiverOutputStatus,
-        urgent: u32,
-    ) {
-        let bar = self
-            .bars
-            .iter_mut()
-            .find(|b| b.river_output_status.as_ref() == Some(output_status))
-            .unwrap();
+    fn urgent_tags_updated(&mut self, output: &wl_output::WlOutput, urgent: u32) {
+        let bar = self.bars.iter_mut().find(|b| &b.output == output).unwrap();
         bar.tags_info.urgent = urgent;
         bar.draw(&mut self.shared_state);
     }
 
-    fn views_tags_updated(
-        &mut self,
-        _conn: &Connection,
-        _qh: &QueueHandle<Self>,
-        output_status: &RiverOutputStatus,
-        tags: Vec<u32>,
-    ) {
-        let bar = self
-            .bars
-            .iter_mut()
-            .find(|b| b.river_output_status.as_ref() == Some(output_status))
-            .unwrap();
+    fn views_tags_updated(&mut self, output: &wl_output::WlOutput, tags: Vec<u32>) {
+        let bar = self.bars.iter_mut().find(|b| &b.output == output).unwrap();
         bar.tags_info.active = tags.into_iter().fold(0, |a, b| a | b);
         bar.draw(&mut self.shared_state);
     }
 
-    fn layout_name_updated(
-        &mut self,
-        _conn: &Connection,
-        _qh: &QueueHandle<Self>,
-        output_status: &RiverOutputStatus,
-        layout_name: Option<String>,
-    ) {
-        let bar = self
-            .bars
-            .iter_mut()
-            .find(|b| b.river_output_status.as_ref() == Some(output_status))
-            .unwrap();
-        bar.layout_name = layout_name;
+    fn layout_name_updated(&mut self, output: &wl_output::WlOutput, layout_name: Option<String>) {
+        let bar = self.bars.iter_mut().find(|b| &b.output == output).unwrap();
+        bar.set_layout_name(layout_name);
         bar.draw(&mut self.shared_state);
     }
 }

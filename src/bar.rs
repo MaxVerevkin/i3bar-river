@@ -2,7 +2,7 @@ use std::collections::BinaryHeap;
 
 use pangocairo::cairo;
 use smithay_client_toolkit::{
-    reexports::client::protocol::{wl_seat, wl_shm},
+    reexports::client::protocol::{wl_output, wl_seat, wl_shm},
     shell::layer::LayerSurface,
 };
 
@@ -20,6 +20,7 @@ use crate::{
 };
 
 pub struct Bar {
+    pub output: wl_output::WlOutput,
     pub configured: bool,
     pub width: u32,
     pub height: u32,
@@ -29,6 +30,7 @@ pub struct Bar {
     pub river_output_status: Option<RiverOutputStatus>,
     pub river_control: Option<RiverControlState>,
     pub layout_name: Option<String>,
+    pub layout_name_computed: Option<ComputedText>,
     pub tags_btns: ButtonManager,
     pub tags_info: TagsInfo,
     pub tags_computed: Vec<ComputedText>,
@@ -48,6 +50,11 @@ impl Bar {
     pub fn has_tags_provider(&self) -> bool {
         // TODO: add more tags providers
         self.river_output_status.is_some()
+    }
+
+    pub fn set_layout_name(&mut self, layout_name: Option<String>) {
+        self.layout_name_computed = None;
+        self.layout_name = layout_name;
     }
 
     pub fn click(
@@ -92,7 +99,7 @@ impl Bar {
         let height_f = height as f64;
 
         let (buffer, canvas) = ss
-            .get_pool(height as usize * stride as usize)
+            .pool
             .create_buffer(
                 width * self.scale,
                 height * self.scale,
@@ -175,18 +182,20 @@ impl Bar {
 
         // Display layout name
         if let Some(layout_name) = &self.layout_name {
-            let text = ComputedText::new(
-                layout_name,
-                text::Attributes {
-                    font: &ss.config.font,
-                    padding_left: 25.0,
-                    padding_right: 25.0,
-                    min_width: None,
-                    align: Default::default(),
-                    markup: false,
-                },
-                &cairo_ctx,
-            );
+            let text = self.layout_name_computed.get_or_insert_with(|| {
+                ComputedText::new(
+                    layout_name,
+                    text::Attributes {
+                        font: &ss.config.font,
+                        padding_left: 25.0,
+                        padding_right: 25.0,
+                        min_width: None,
+                        align: Default::default(),
+                        markup: false,
+                    },
+                    &cairo_ctx,
+                )
+            });
             text.render(
                 &cairo_ctx,
                 RenderOptions {
