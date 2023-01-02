@@ -34,6 +34,7 @@ pub struct Config {
     // misc
     pub hide_inactive_tags: bool,
     pub invert_touchpad_scrolling: bool,
+    pub show_layout_name: bool,
 }
 
 impl Default for Config {
@@ -60,6 +61,7 @@ impl Default for Config {
             command: None,
             hide_inactive_tags: true,
             invert_touchpad_scrolling: true,
+            show_layout_name: true,
         }
     }
 }

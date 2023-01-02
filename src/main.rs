@@ -1,3 +1,5 @@
+#![allow(clippy::single_component_path_imports)]
+
 #[macro_use]
 extern crate anyhow;
 #[macro_use]
@@ -7,10 +9,11 @@ mod bar;
 mod button_manager;
 mod color;
 mod config;
+mod cursor;
 mod i3bar_protocol;
 mod ord_adaptor;
 mod pointer_btn;
-mod river_protocols;
+mod protocol;
 mod shared_state;
 mod state;
 mod status_cmd;
@@ -18,45 +21,35 @@ mod tags;
 mod text;
 mod utils;
 
-use std::os::unix::io::AsRawFd;
-
-use smithay_client_toolkit::reexports::client::Connection;
-use tokio::io::{unix::AsyncFd, Interest};
+use wayrs_client::connection::Connection;
 
 use state::State;
-use wayland_client::globals::registry_queue_init;
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> anyhow::Result<()> {
     env_logger::init();
 
-    let conn = Connection::connect_to_env()?;
-    let (globals, mut event_queue) = registry_queue_init(&conn).unwrap();
-    let mut state = State::new(&mut event_queue, &globals);
-
-    let async_fd = AsyncFd::with_interest(
-        event_queue.prepare_read()?.connection_fd().as_raw_fd(),
-        Interest::READABLE,
-    )?;
+    let mut conn = Connection::connect()?;
+    let globals = conn.async_collect_initial_globals().await?;
+    let mut state = State::new(&mut conn, &globals);
+    conn.async_flush().await?;
 
     loop {
         tokio::select! {
-            readable = async_fd.readable() => {
-                readable?.clear_ready();
-                event_queue.prepare_read()?.read()?;
-                event_queue.dispatch_pending(&mut state)?;
-                event_queue.flush()?;
+            recv_events = conn.async_recv_events() => {
+                recv_events?;
+                conn.dispatch_events(&mut state)?;
+                conn.async_flush().await?;
             }
-            readable = state.wait_for_status_cmd() => {
-                readable?.clear_ready();
-                if let Err(e) = state.notify_available() {
+            reat_res = state.status_cmd_read() => {
+                reat_res?;
+                if let Err(e) = state.status_cmd_notify_available(&mut conn) {
                     if let Some(mut status_cmd) = state.shared_state.status_cmd.take() {
                         let _ = status_cmd.child.kill();
                     }
-                    state.set_error(e.to_string());
-                    state.draw_all();
+                    state.set_error(&mut conn, e.to_string());
                 }
-                event_queue.flush()?;
+                conn.async_flush().await?;
             }
         }
     }
