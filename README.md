@@ -51,13 +51,18 @@ tag_focused_fg = "#1d2021"
 tag_focused_bg = "#689d68"
 tag_urgent_fg = "#282828"
 tag_urgent_bg = "#cc241d"
+tag_inactive_fg = "#d79921"
+tag_inactive_bg = "#282828"
 font = "JetBrainsMono Nerd Font 10"
 height = 20
 separator_width = 0
 tags_r = 6
+tags_padding = 25
 blocks_r = 6
 blocks_overlap = 0
 command = "i3status-rs"
+hide_inactive_tags = true
+invert_touchpad_scrolling = true
 show_layout_name = false
 ```
 
