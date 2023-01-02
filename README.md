@@ -58,6 +58,7 @@ tags_r = 6
 blocks_r = 6
 blocks_overlap = 0
 command = "i3status-rs"
+show_layout_name = false
 ```
 
 ## How progressive short mode and rounded corners work

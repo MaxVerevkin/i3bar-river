@@ -13,17 +13,17 @@ pangocairo = "0.16"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 memchr = "2"
-wayland-client = "0.30.0-beta.13"
-wayland-scanner = "0.30.0-beta.13"
-wayland-backend = "0.1.0-beta.13"
+thiserror = "1.0.38"
 
-[dependencies.smithay-client-toolkit]
-git = "https://github.com/Smithay/client-toolkit"
-default-features = false
+wayrs-client = { version = "0.2.1", features = ["tokio"] }
+wayrs-scanner = "0.2"
+wayrs-shm-alloc = "0.2"
+
+xcursor = "0.3.4"
 
 [dependencies.tokio]
 version = "1"
-features = ["macros", "net", "rt", "sync"]
+features = ["macros", "net", "rt", "sync", "io-util", "process"]
 
 [profile.release]
 lto = "fat"

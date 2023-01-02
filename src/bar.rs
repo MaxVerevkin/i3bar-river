@@ -1,34 +1,34 @@
 use std::collections::BinaryHeap;
+use std::ffi::CString;
 
 use pangocairo::cairo;
-use smithay_client_toolkit::{
-    reexports::client::protocol::{wl_output, wl_seat, wl_shm},
-    shell::layer::LayerSurface,
-};
 
-use crate::{
-    button_manager::ButtonManager,
-    config::Config,
-    i3bar_protocol::{self, Block, MinWidth},
-    ord_adaptor::DefaultLess,
-    pointer_btn::PointerBtn,
-    river_protocols::{control::RiverControlState, status::RiverOutputStatus},
-    shared_state::SharedState,
-    state::ComputedBlock,
-    tags::{compute_tag_label, TagState, TagsInfo},
-    text::{self, ComputedText, RenderOptions},
-};
+use wayrs_client::connection::Connection;
+
+use crate::button_manager::ButtonManager;
+use crate::config::Config;
+use crate::i3bar_protocol::{self, Block, MinWidth};
+use crate::ord_adaptor::DefaultLess;
+use crate::pointer_btn::PointerBtn;
+use crate::protocol::*;
+use crate::shared_state::SharedState;
+use crate::state::{ComputedBlock, State};
+use crate::tags::{compute_tag_label, TagState, TagsInfo};
+use crate::text::{self, ComputedText, RenderOptions};
 
 pub struct Bar {
-    pub output: wl_output::WlOutput,
+    pub output: WlOutput,
+    pub output_reg_name: u32,
     pub configured: bool,
+    pub frame_cb: Option<WlCallback>,
     pub width: u32,
     pub height: u32,
     pub scale: i32,
-    pub layer: LayerSurface,
+    pub surface: WlSurface,
+    pub layer_surface: ZwlrLayerSurfaceV1,
     pub blocks_btns: ButtonManager<(Option<String>, Option<String>)>,
-    pub river_output_status: Option<RiverOutputStatus>,
-    pub river_control: Option<RiverControlState>,
+    pub river_output_status: Option<ZriverOutputStatusV1>,
+    pub river_control: Option<ZriverControlV1>,
     pub layout_name: Option<String>,
     pub layout_name_computed: Option<ComputedText>,
     pub tags_btns: ButtonManager,
@@ -37,16 +37,6 @@ pub struct Bar {
 }
 
 impl Bar {
-    pub fn configure(&mut self, ss: &mut SharedState, width: u32) {
-        if self.width != width && width != 0 {
-            self.width = width;
-            self.layer.set_exclusive_zone(self.height as i32);
-        }
-
-        self.configured = true;
-        self.draw(ss);
-    }
-
     pub fn has_tags_provider(&self) -> bool {
         // TODO: add more tags providers
         self.river_output_status.is_some()
@@ -59,20 +49,23 @@ impl Bar {
 
     pub fn click(
         &mut self,
+        conn: &mut Connection<State>,
         ss: &mut SharedState,
         button: PointerBtn,
-        seat: &wl_seat::WlSeat,
+        seat: WlSeat,
         x: f64,
         _y: f64,
     ) -> anyhow::Result<()> {
         if let Some(tag) = self.tags_btns.click(x) {
             if let Some(river_control) = &self.river_control {
                 let cmd = match button {
-                    PointerBtn::Left => "set-focused-tags",
-                    PointerBtn::Right => "toggle-focused-tags",
+                    PointerBtn::Left => wayrs_client::cstr!("set-focused-tags"),
+                    PointerBtn::Right => wayrs_client::cstr!("toggle-focused-tags"),
                     _ => return Ok(()),
                 };
-                river_control.run_command(&ss.qh, seat, [cmd.into(), (1u32 << tag).to_string()]);
+                river_control.add_argument(conn, cmd.into());
+                river_control.add_argument(conn, CString::new((1u32 << tag).to_string()).unwrap());
+                river_control.run_command(conn, seat);
             }
         } else if let Some((name, instance)) = self.blocks_btns.click(x) {
             if let Some(cmd) = &mut ss.status_cmd {
@@ -87,10 +80,8 @@ impl Bar {
         Ok(())
     }
 
-    pub fn draw(&mut self, ss: &mut SharedState) {
-        if !self.configured {
-            return;
-        }
+    pub fn frame(&mut self, conn: &mut Connection<State>, ss: &mut SharedState) {
+        assert!(self.configured);
 
         let stride = 4 * self.width as i32;
         let width = self.width as i32;
@@ -98,15 +89,13 @@ impl Bar {
         let width_f = width as f64;
         let height_f = height as f64;
 
-        let (buffer, canvas) = ss
-            .pool
-            .create_buffer(
-                width * self.scale,
-                height * self.scale,
-                stride * self.scale,
-                wl_shm::Format::Argb8888,
-            )
-            .expect("create buffer");
+        let (buffer, canvas) = ss.shm.alloc_buffer(
+            conn,
+            width * self.scale,
+            height * self.scale,
+            stride * self.scale,
+            wl_shm::Format::Argb8888,
+        );
 
         let cairo_surf = unsafe {
             cairo::ImageSurface::create_for_data_unsafe(
@@ -121,7 +110,7 @@ impl Bar {
 
         let cairo_ctx = cairo::Context::new(&cairo_surf).expect("cairo context");
         cairo_ctx.scale(self.scale as f64, self.scale as f64);
-        self.layer.wl_surface().set_buffer_scale(self.scale);
+        self.surface.set_buffer_scale(conn, self.scale);
 
         // Background
         cairo_ctx.save().unwrap();
@@ -181,34 +170,36 @@ impl Bar {
         }
 
         // Display layout name
-        if let Some(layout_name) = &self.layout_name {
-            let text = self.layout_name_computed.get_or_insert_with(|| {
-                ComputedText::new(
-                    layout_name,
-                    text::Attributes {
-                        font: &ss.config.font,
-                        padding_left: 25.0,
-                        padding_right: 25.0,
-                        min_width: None,
-                        align: Default::default(),
-                        markup: false,
-                    },
+        if ss.config.show_layout_name {
+            if let Some(layout_name) = &self.layout_name {
+                let text = self.layout_name_computed.get_or_insert_with(|| {
+                    ComputedText::new(
+                        layout_name,
+                        text::Attributes {
+                            font: &ss.config.font,
+                            padding_left: 25.0,
+                            padding_right: 25.0,
+                            min_width: None,
+                            align: Default::default(),
+                            markup: false,
+                        },
+                        &cairo_ctx,
+                    )
+                });
+                text.render(
                     &cairo_ctx,
-                )
-            });
-            text.render(
-                &cairo_ctx,
-                RenderOptions {
-                    x_offset: offset_left,
-                    bar_height: height_f,
-                    fg_color: ss.config.tag_inactive_fg,
-                    bg_color: None,
-                    r_left: 0.0,
-                    r_right: 0.0,
-                    overlap: 0.0,
-                },
-            );
-            offset_left += text.width;
+                    RenderOptions {
+                        x_offset: offset_left,
+                        bar_height: height_f,
+                        fg_color: ss.config.tag_inactive_fg,
+                        bg_color: None,
+                        r_left: 0.0,
+                        r_right: 0.0,
+                        overlap: 0.0,
+                    },
+                );
+                offset_left += text.width;
+            }
         }
 
         // Display the blocks
@@ -223,16 +214,17 @@ impl Bar {
             height_f,
         );
 
-        // Attach the buffer to the surface and mark the entire surface as damaged
-        buffer
-            .attach_to(self.layer.wl_surface())
-            .expect("attaching buffer");
-        self.layer
-            .wl_surface()
-            .damage_buffer(0, 0, width * self.scale, height * self.scale);
+        self.surface.attach(conn, buffer, 0, 0);
+        self.surface
+            .damage_buffer(conn, 0, 0, width * self.scale, height * self.scale);
+        self.surface.commit(conn);
+    }
 
-        // Finally, commit the surface
-        self.layer.wl_surface().commit();
+    pub fn request_frame(&mut self, conn: &mut Connection<State>) {
+        if self.configured && self.frame_cb.is_none() {
+            self.frame_cb = Some(self.surface.frame(conn));
+            self.surface.commit(conn);
+        }
     }
 }
 
