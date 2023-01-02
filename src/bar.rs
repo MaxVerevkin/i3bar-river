@@ -126,7 +126,7 @@ impl Bar {
                 //  TODO make configurable
                 for text in ["1", "2", "3", "4", "5", "6", "7", "8", "9"] {
                     self.tags_computed
-                        .push(compute_tag_label(text, &ss.config.font, &cairo_ctx));
+                        .push(compute_tag_label(text, &ss.config, &cairo_ctx));
                 }
             }
             self.tags_btns.clear();

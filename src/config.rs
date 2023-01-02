@@ -27,6 +27,7 @@ pub struct Config {
     pub height: u32,
     pub separator_width: f64,
     pub tags_r: f64,
+    pub tags_padding: f64,
     pub blocks_r: f64,
     pub blocks_overlap: f64,
     // command
@@ -56,6 +57,7 @@ impl Default for Config {
             height: 24,
             separator_width: 2.0,
             tags_r: 0.0,
+            tags_padding: 25.0,
             blocks_r: 0.0,
             blocks_overlap: 0.0,
             command: None,

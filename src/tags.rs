@@ -1,7 +1,7 @@
+use crate::config::Config;
 use crate::text::{Attributes, ComputedText};
-use cairo::Context;
-use pango::FontDescription;
-use pangocairo::{cairo, pango};
+
+use pangocairo::cairo::Context;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TagState {
@@ -32,13 +32,13 @@ impl TagsInfo {
     }
 }
 
-pub fn compute_tag_label(label: &str, font: &FontDescription, context: &Context) -> ComputedText {
+pub fn compute_tag_label(label: &str, config: &Config, context: &Context) -> ComputedText {
     ComputedText::new(
         label,
         Attributes {
-            font,
-            padding_left: 25.0,
-            padding_right: 25.0,
+            font: &config.font.0,
+            padding_left: config.tags_padding,
+            padding_right: config.tags_padding,
             min_width: None,
             align: Default::default(),
             markup: false,
