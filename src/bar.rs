@@ -65,7 +65,18 @@ impl Bar {
                 };
                 river_control.add_argument(conn, cmd.into());
                 river_control.add_argument(conn, CString::new((1u32 << tag).to_string()).unwrap());
-                river_control.run_command(conn, seat);
+                river_control.run_command_with_cb(
+                    conn,
+                    seat,
+                    |conn, state, _, event| match event {
+                        zriver_command_callback_v1::Event::Success(msg) => {
+                            info!("river_control: {msg:?}")
+                        }
+                        zriver_command_callback_v1::Event::Failure(msg) => {
+                            state.set_error(conn, msg.to_string_lossy())
+                        }
+                    },
+                );
             }
         } else if let Some((name, instance)) = self.blocks_btns.click(x) {
             if let Some(cmd) = &mut ss.status_cmd {
@@ -214,7 +225,7 @@ impl Bar {
             height_f,
         );
 
-        self.surface.attach(conn, buffer, 0, 0);
+        self.surface.attach(conn, buffer.wl, 0, 0);
         self.surface
             .damage_buffer(conn, 0, 0, width * self.scale, height * self.scale);
         self.surface.commit(conn);
@@ -222,7 +233,12 @@ impl Bar {
 
     pub fn request_frame(&mut self, conn: &mut Connection<State>) {
         if self.configured && self.frame_cb.is_none() {
-            self.frame_cb = Some(self.surface.frame(conn));
+            self.frame_cb = Some(self.surface.frame_with_cb(conn, |conn, state, cb, _| {
+                if let Some(bar) = state.bars.iter_mut().find(|bar| bar.frame_cb == Some(cb)) {
+                    bar.frame_cb = None;
+                    bar.frame(conn, &mut state.shared_state);
+                }
+            }));
             self.surface.commit(conn);
         }
     }

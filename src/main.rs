@@ -38,7 +38,7 @@ async fn main() -> anyhow::Result<()> {
         tokio::select! {
             recv_events = conn.async_recv_events() => {
                 recv_events?;
-                conn.dispatch_events(&mut state)?;
+                conn.dispatch_events(&mut state);
                 conn.async_flush().await?;
             }
             reat_res = state.status_cmd_read() => {

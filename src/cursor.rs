@@ -92,7 +92,7 @@ impl Cursor {
         assert_eq!(image.pixels_argb.len(), canvas.len(),);
         canvas.copy_from_slice(&image.pixels_rgba);
 
-        self.surface.attach(conn, buffer, 0, 0);
+        self.surface.attach(conn, buffer.wl, 0, 0);
         self.surface
             .damage_buffer(conn, 0, 0, image.width as i32, image.height as i32);
         self.surface.set_buffer_scale(conn, scale as i32);
