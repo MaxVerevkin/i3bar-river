@@ -353,6 +353,7 @@ dependencies = [
  "tokio",
  "toml 0.6.0",
  "wayrs-client",
+ "wayrs-protocols",
  "wayrs-shm-alloc",
  "xcursor",
 ]
@@ -940,6 +941,15 @@ dependencies = [
  "thiserror",
  "tokio",
  "wayrs-scanner",
+]
+
+[[package]]
+name = "wayrs-protocols"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a0e6d6d92bffb493c54934baea055c663b5dec21be48742ece3ea4f1e9f616d8"
+dependencies = [
+ "wayrs-client",
 ]
 
 [[package]]

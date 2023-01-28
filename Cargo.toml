@@ -16,6 +16,7 @@ memchr = "2"
 thiserror = "1.0.38"
 
 wayrs-client = { version = "0.3", features = ["tokio"] }
+wayrs-protocols = { version = "0.3", features = ["wlr-layer-shell-unstable-v1"] }
 wayrs-shm-alloc = "0.3"
 
 xcursor = "0.3.4"
