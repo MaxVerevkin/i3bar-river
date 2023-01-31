@@ -1,4 +1,4 @@
-use crate::cursor::Cursor;
+use crate::cursor::CursorTheme;
 use crate::protocol::*;
 
 use std::future::pending;
@@ -24,14 +24,16 @@ pub struct State {
     pub bars: Vec<Bar>,
 
     pub shared_state: SharedState,
+
+    cursor_theme: Option<CursorTheme>,
 }
 
 pub struct Seat {
     seat: WlSeat,
     reg_name: u32,
     pointer: Option<WlPointer>,
-    cursor: Cursor,
-    cur_surface: Option<WlSurface>,
+    cursor_surface: WlSurface,
+    current_surface: Option<WlSurface>,
     x: f64,
     y: f64,
     pending_button: Option<PointerBtn>,
@@ -53,7 +55,14 @@ impl State {
             .and_then(|cmd| StatusCmd::new(cmd).map_err(|e| error = Err(e)).ok());
 
         conn.set_callback_for(conn.registry(), wl_registry_cb);
+
         let shm = globals.bind(conn, 1..=1).expect("could not bind wl_shm");
+
+        let mut cursor_theme = CursorTheme::new();
+        let cursor_theme_ok = cursor_theme
+            .ensure_cursor_is_loaded("default")
+            .map_err(|e| error = Err(e.into()))
+            .is_ok();
 
         let mut this = Self {
             wl_compositor: globals
@@ -76,6 +85,8 @@ impl State {
                 blocks: Vec::new(),
                 blocks_cache: Vec::new(),
             },
+
+            cursor_theme: cursor_theme_ok.then_some(cursor_theme),
         };
 
         globals
@@ -188,13 +199,12 @@ impl State {
 
     fn bind_seat(&mut self, conn: &mut Connection<Self>, global: &Global) {
         let seat: WlSeat = global.bind_with_cb(conn, 5..=8, wl_seat_cb).unwrap();
-        let cursor = Cursor::new(conn, self.wl_compositor).unwrap();
         self.seats.push(Seat {
             seat,
             reg_name: global.name,
             pointer: None,
-            cursor,
-            cur_surface: None,
+            cursor_surface: self.wl_compositor.create_surface(conn),
+            current_surface: None,
             x: 0.0,
             y: 0.0,
             pending_button: None,
@@ -217,14 +227,18 @@ impl State {
 
     fn drop_seat(&mut self, conn: &mut Connection<Self>, seat_index: usize) {
         let seat = self.seats.swap_remove(seat_index);
+
         if let Some(pointer) = seat.pointer {
             if pointer.version() >= 3 {
                 pointer.release(conn);
             }
         }
+
         if seat.seat.version() >= 5 {
             seat.seat.release(conn);
         }
+
+        seat.cursor_surface.destroy(conn);
     }
 }
 
@@ -360,7 +374,7 @@ fn wl_pointer_cb(
         Event::Frame => {
             let btn = seat.pending_button.take();
             let scroll = seat.scroll_frame.finalize();
-            if let Some(surface) = seat.cur_surface {
+            if let Some(surface) = seat.current_surface {
                 let bar = state
                     .bars
                     .iter_mut()
@@ -418,18 +432,24 @@ fn wl_pointer_cb(
                 .iter()
                 .find(|bar| bar.surface.id() == args.surface)
                 .unwrap();
-            seat.cur_surface = Some(bar.surface);
+            seat.current_surface = Some(bar.surface);
             seat.x = args.surface_x.as_f64();
             seat.y = args.surface_y.as_f64();
-            seat.cursor.set(
-                conn,
-                args.serial,
-                pointer,
-                bar.scale as u32,
-                &mut state.shared_state.shm,
-            );
+            if let Some(cursor_theme) = &mut state.cursor_theme {
+                cursor_theme
+                    .set_cursor(
+                        conn,
+                        "default",
+                        bar.scale as u32,
+                        args.serial,
+                        &mut state.shared_state.shm,
+                        seat.cursor_surface,
+                        pointer,
+                    )
+                    .unwrap();
+            }
         }
-        Event::Leave(_) => seat.cur_surface = None,
+        Event::Leave(_) => seat.current_surface = None,
         Event::Motion(args) => {
             seat.x = args.surface_x.as_f64();
             seat.y = args.surface_y.as_f64();
