@@ -88,7 +88,7 @@ impl CursorTheme {
             wl_shm::Format::Argb8888,
         );
 
-        assert_eq!(image.pixels_argb.len(), canvas.len(),);
+        assert_eq!(image.pixels_rgba.len(), canvas.len());
         canvas.copy_from_slice(&image.pixels_rgba);
 
         surface.attach(conn, buffer.wl, 0, 0);
