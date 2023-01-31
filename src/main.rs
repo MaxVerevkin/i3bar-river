@@ -17,9 +17,9 @@ mod protocol;
 mod shared_state;
 mod state;
 mod status_cmd;
-mod tags;
 mod text;
 mod utils;
+mod wm_info_provider;
 
 use wayrs_client::connection::Connection;
 

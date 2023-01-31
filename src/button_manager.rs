@@ -1,4 +1,4 @@
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct ButtonManager<T = usize>(Vec<(f64, f64, T)>);
 
 impl<T> ButtonManager<T> {

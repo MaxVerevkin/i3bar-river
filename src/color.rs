@@ -13,11 +13,7 @@ pub struct Color {
 
 impl Color {
     pub fn apply(self, cr: &Context) {
-        if self.alpha.is_nan() {
-            cr.set_source_rgb(self.red, self.green, self.blue);
-        } else {
-            cr.set_source_rgba(self.red, self.green, self.blue, self.alpha);
-        }
+        cr.set_source_rgba(self.red, self.green, self.blue, self.alpha);
     }
 
     pub fn from_rgba(r: u8, g: u8, b: u8, a: u8) -> Self {
@@ -25,7 +21,7 @@ impl Color {
             red: r as f64 / 255.0,
             green: g as f64 / 255.0,
             blue: b as f64 / 255.0,
-            alpha: if a == 255 { f64::NAN } else { a as f64 / 255.0 },
+            alpha: a as f64 / 255.0,
         }
     }
 

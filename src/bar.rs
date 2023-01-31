@@ -1,11 +1,11 @@
 use std::collections::BinaryHeap;
-use std::ffi::CString;
 
 use pangocairo::cairo;
 
 use wayrs_client::connection::Connection;
 
 use crate::button_manager::ButtonManager;
+use crate::color::Color;
 use crate::config::Config;
 use crate::i3bar_protocol::{self, Block, MinWidth};
 use crate::ord_adaptor::DefaultLess;
@@ -13,8 +13,8 @@ use crate::pointer_btn::PointerBtn;
 use crate::protocol::*;
 use crate::shared_state::SharedState;
 use crate::state::{ComputedBlock, State};
-use crate::tags::{compute_tag_label, TagState, TagsInfo};
 use crate::text::{self, ComputedText, RenderOptions};
+use crate::wm_info_provider::WmInfo;
 
 pub struct Bar {
     pub output: WlOutput,
@@ -27,24 +27,24 @@ pub struct Bar {
     pub surface: WlSurface,
     pub layer_surface: ZwlrLayerSurfaceV1,
     pub blocks_btns: ButtonManager<(Option<String>, Option<String>)>,
-    pub river_output_status: Option<ZriverOutputStatusV1>,
-    pub river_control: Option<ZriverControlV1>,
-    pub layout_name: Option<String>,
+    pub wm_info: WmInfo,
+    pub tags_btns: ButtonManager<String>,
+    pub tags_computed: Vec<(ColorPair, ComputedText)>,
     pub layout_name_computed: Option<ComputedText>,
-    pub tags_btns: ButtonManager,
-    pub tags_info: TagsInfo,
-    pub tags_computed: Vec<ComputedText>,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct ColorPair {
+    bg: Color,
+    fg: Color,
 }
 
 impl Bar {
-    pub fn has_tags_provider(&self) -> bool {
-        // TODO: add more tags providers
-        self.river_output_status.is_some()
-    }
-
-    pub fn set_layout_name(&mut self, layout_name: Option<String>) {
+    pub fn set_wm_info(&mut self, info: WmInfo) {
+        self.wm_info = info;
+        self.tags_btns.clear();
+        self.tags_computed.clear();
         self.layout_name_computed = None;
-        self.layout_name = layout_name;
     }
 
     pub fn click(
@@ -57,26 +57,16 @@ impl Bar {
         _y: f64,
     ) -> anyhow::Result<()> {
         if let Some(tag) = self.tags_btns.click(x) {
-            if let Some(river_control) = &self.river_control {
-                let cmd = match button {
-                    PointerBtn::Left => wayrs_client::cstr!("set-focused-tags"),
-                    PointerBtn::Right => wayrs_client::cstr!("toggle-focused-tags"),
+            if let Some(wm_info_provider) = &mut ss.wm_info_provider {
+                match button {
+                    PointerBtn::Left => {
+                        wm_info_provider.left_click_on_tag(conn, self.output, seat, tag)
+                    }
+                    PointerBtn::Right => {
+                        wm_info_provider.middle_click_on_tag(conn, self.output, seat, tag)
+                    }
                     _ => return Ok(()),
-                };
-                river_control.add_argument(conn, cmd.into());
-                river_control.add_argument(conn, CString::new((1u32 << tag).to_string()).unwrap());
-                river_control.run_command_with_cb(
-                    conn,
-                    seat,
-                    |conn, state, _, event| match event {
-                        zriver_command_callback_v1::Event::Success(msg) => {
-                            info!("river_control: {msg:?}")
-                        }
-                        zriver_command_callback_v1::Event::Failure(msg) => {
-                            state.set_error(conn, msg.to_string_lossy())
-                        }
-                    },
-                );
+                }
             }
         } else if let Some((name, instance)) = self.blocks_btns.click(x) {
             if let Some(cmd) = &mut ss.status_cmd {
@@ -130,59 +120,61 @@ impl Bar {
         cairo_ctx.paint().unwrap();
         cairo_ctx.restore().unwrap();
 
+        // Compute tags
+        if self.tags_computed.is_empty() {
+            let mut offset_left = 0.0;
+            self.tags_btns.clear();
+            for tag in &self.wm_info.tags {
+                let (bg, fg) = if tag.is_urgent {
+                    (ss.config.tag_urgent_bg, ss.config.tag_urgent_fg)
+                } else if tag.is_focused {
+                    (ss.config.tag_focused_bg, ss.config.tag_focused_fg)
+                } else if tag.is_active {
+                    (ss.config.tag_bg, ss.config.tag_fg)
+                } else if !ss.config.hide_inactive_tags {
+                    (ss.config.tag_inactive_bg, ss.config.tag_inactive_fg)
+                } else {
+                    continue;
+                };
+                let comp = compute_tag_label(&tag.name, &ss.config, &cairo_ctx);
+                self.tags_btns
+                    .push(offset_left, comp.width, tag.name.clone());
+                offset_left += comp.width;
+                self.tags_computed.push((ColorPair { bg, fg }, comp));
+            }
+        }
+
         // Display tags
         let mut offset_left = 0.0;
-        if self.has_tags_provider() {
-            if self.tags_computed.is_empty() {
-                //  TODO make configurable
-                for text in ["1", "2", "3", "4", "5", "6", "7", "8", "9"] {
-                    self.tags_computed
-                        .push(compute_tag_label(text, &ss.config, &cairo_ctx));
-                }
-            }
-            self.tags_btns.clear();
-            for (i, label) in self.tags_computed.iter().enumerate() {
-                let state = self.tags_info.get_state(i);
-                let (bg, fg) = match state {
-                    TagState::Urgent => (ss.config.tag_urgent_bg, ss.config.tag_urgent_fg),
-                    TagState::Focused => (ss.config.tag_focused_bg, ss.config.tag_focused_fg),
-                    TagState::Active => (ss.config.tag_bg, ss.config.tag_fg),
-                    TagState::Inactive => {
-                        if ss.config.hide_inactive_tags {
-                            continue;
-                        }
-                        (ss.config.tag_inactive_bg, ss.config.tag_inactive_fg)
-                    }
-                };
-                label.render(
-                    &cairo_ctx,
-                    RenderOptions {
-                        x_offset: offset_left,
-                        bar_height: height_f,
-                        fg_color: fg,
-                        bg_color: Some(bg),
-                        r_left: if i == 0 || self.tags_info.get_state(i.saturating_sub(1)) != state
-                        {
-                            ss.config.tags_r
-                        } else {
-                            0.0
-                        },
-                        r_right: if i == 8 || self.tags_info.get_state(i + 1) != state {
-                            ss.config.tags_r
-                        } else {
-                            0.0
-                        },
-                        overlap: 0.0,
+        for (i, label) in self.tags_computed.iter().enumerate() {
+            label.1.render(
+                &cairo_ctx,
+                RenderOptions {
+                    x_offset: offset_left,
+                    bar_height: height_f,
+                    fg_color: label.0.fg,
+                    bg_color: Some(label.0.bg),
+                    r_left: if i == 0 || self.tags_computed[i - 1].0 != label.0 {
+                        ss.config.tags_r
+                    } else {
+                        0.0
                     },
-                );
-                self.tags_btns.push(offset_left, label.width, i);
-                offset_left += label.width;
-            }
+                    r_right: if i + 1 == self.tags_computed.len()
+                        || self.tags_computed[i + 1].0 != label.0
+                    {
+                        ss.config.tags_r
+                    } else {
+                        0.0
+                    },
+                    overlap: 0.0,
+                },
+            );
+            offset_left += label.1.width;
         }
 
         // Display layout name
         if ss.config.show_layout_name {
-            if let Some(layout_name) = &self.layout_name {
+            if let Some(layout_name) = &self.wm_info.layout_name {
                 let text = self.layout_name_computed.get_or_insert_with(|| {
                     ComputedText::new(
                         layout_name,
@@ -456,4 +448,19 @@ fn render_blocks(
             blocks_width -= w;
         }
     }
+}
+
+pub fn compute_tag_label(label: &str, config: &Config, context: &cairo::Context) -> ComputedText {
+    ComputedText::new(
+        label,
+        text::Attributes {
+            font: &config.font.0,
+            padding_left: config.tags_padding,
+            padding_right: config.tags_padding,
+            min_width: None,
+            align: Default::default(),
+            markup: false,
+        },
+        context,
+    )
 }

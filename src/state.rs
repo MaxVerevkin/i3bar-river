@@ -1,5 +1,6 @@
 use crate::cursor::CursorTheme;
 use crate::protocol::*;
+use crate::wm_info_provider::*;
 
 use std::future::pending;
 
@@ -10,15 +11,12 @@ use wayrs_shm_alloc::{ShmAlloc, ShmAllocState};
 
 use crate::{
     bar::Bar, config::Config, i3bar_protocol::Block, pointer_btn::PointerBtn,
-    shared_state::SharedState, status_cmd::StatusCmd, text::ComputedText,
+    shared_state::SharedState, status_cmd::StatusCmd, text::ComputedText, wm_info_provider,
 };
 
 pub struct State {
     wl_compositor: WlCompositor,
     layer_shell: ZwlrLayerShellV1,
-
-    river_status_manager: Option<ZriverStatusManagerV1>,
-    river_control: Option<ZriverControlV1>,
 
     pub seats: Vec<Seat>,
     pub bars: Vec<Bar>,
@@ -72,9 +70,6 @@ impl State {
                 .bind(conn, 1..=4)
                 .expect("could not bind layer_shell"),
 
-            river_status_manager: globals.bind(conn, 1..=4).ok(),
-            river_control: globals.bind(conn, 1..=1).ok(),
-
             seats: Vec::new(),
             bars: Vec::new(),
 
@@ -84,6 +79,7 @@ impl State {
                 status_cmd,
                 blocks: Vec::new(),
                 blocks_cache: Vec::new(),
+                wm_info_provider: wm_info_provider::bind_wayland(conn, globals, wm_info_cb),
             },
 
             cursor_theme: cursor_theme_ok.then_some(cursor_theme),
@@ -153,6 +149,10 @@ impl State {
             .bind_with_cb(conn, 2..=4, wl_output_cb)
             .expect("could not bind wl_output");
 
+        if let Some(wm_info_provider) = &mut self.shared_state.wm_info_provider {
+            wm_info_provider.new_outut(conn, output);
+        }
+
         let surface = self.wl_compositor.create_surface(conn);
 
         use zwlr_layer_shell_v1::Layer;
@@ -171,11 +171,6 @@ impl State {
 
         // Note: layer_surface is commited when we receive the scale factor of this output
 
-        let river_output_status = self
-            .river_status_manager
-            .as_ref()
-            .map(|s| s.get_river_output_status_with_cb(conn, output, river_output_status_cb));
-
         self.bars.push(Bar {
             output,
             output_reg_name: global.name,
@@ -187,13 +182,10 @@ impl State {
             surface,
             layer_surface,
             blocks_btns: Default::default(),
-            river_output_status,
-            river_control: self.river_control,
-            layout_name: None,
-            layout_name_computed: None,
+            wm_info: Default::default(),
             tags_btns: Default::default(),
-            tags_info: Default::default(),
             tags_computed: Vec::new(),
+            layout_name_computed: None,
         });
     }
 
@@ -217,8 +209,8 @@ impl State {
         let bar = self.bars.swap_remove(bar_index);
         bar.surface.destroy(conn);
         bar.layer_surface.destroy(conn);
-        if let Some(output_status) = bar.river_output_status {
-            output_status.destroy(conn);
+        if let Some(wm_info_provider) = &mut self.shared_state.wm_info_provider {
+            wm_info_provider.output_removed(conn, bar.output);
         }
         if bar.output.version() >= 3 {
             bar.output.release(conn);
@@ -476,32 +468,9 @@ fn wl_pointer_cb(
     }
 }
 
-fn river_output_status_cb(
-    conn: &mut Connection<State>,
-    state: &mut State,
-    status: ZriverOutputStatusV1,
-    event: zriver_output_status_v1::Event,
-) {
-    let bar = state
-        .bars
-        .iter_mut()
-        .find(|b| b.river_output_status == Some(status))
-        .unwrap();
-
-    use zriver_output_status_v1::Event;
-    match event {
-        Event::FocusedTags(tags) => bar.tags_info.focused = tags,
-        Event::UrgentTags(tags) => bar.tags_info.urgent = tags,
-        Event::LayoutName(name) => bar.set_layout_name(Some(name.into_string().unwrap())),
-        Event::LayoutNameClear => bar.set_layout_name(None),
-        Event::ViewTags(vt) => {
-            bar.tags_info.active = vt
-                .chunks_exact(4)
-                .map(|bytes| u32::from_ne_bytes(bytes.try_into().unwrap()))
-                .fold(0, |a, b| a | b);
-        }
-    }
-
+fn wm_info_cb(conn: &mut Connection<State>, state: &mut State, output: WlOutput, info: WmInfo) {
+    let bar = state.bars.iter_mut().find(|b| b.output == output).unwrap();
+    bar.set_wm_info(info);
     bar.request_frame(conn);
 }
 
