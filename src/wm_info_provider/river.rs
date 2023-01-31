@@ -84,7 +84,7 @@ impl WmInfoProvider for RiverInfoProvider {
             .run_command_with_cb(conn, seat, river_command_cb);
     }
 
-    fn middle_click_on_tag(
+    fn right_click_on_tag(
         &mut self,
         conn: &mut Connection<State>,
         _: WlOutput,

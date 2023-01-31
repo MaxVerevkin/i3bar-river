@@ -63,7 +63,7 @@ impl Bar {
                         wm_info_provider.left_click_on_tag(conn, self.output, seat, tag)
                     }
                     PointerBtn::Right => {
-                        wm_info_provider.middle_click_on_tag(conn, self.output, seat, tag)
+                        wm_info_provider.right_click_on_tag(conn, self.output, seat, tag)
                     }
                     _ => return Ok(()),
                 }

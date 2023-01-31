@@ -25,7 +25,7 @@ pub trait WmInfoProvider {
         tag: &str,
     );
 
-    fn middle_click_on_tag(
+    fn right_click_on_tag(
         &mut self,
         conn: &mut Connection<State>,
         output: WlOutput,
