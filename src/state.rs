@@ -164,8 +164,11 @@ impl State {
             layer_surface_cb,
         );
         layer_surface.set_size(conn, 0, self.shared_state.config.height);
-        layer_surface.set_anchor(conn, self.shared_state.config.position.into()); // Top + Left + Right
-        layer_surface.set_exclusive_zone(conn, self.shared_state.config.height as i32 + 5); // TODO: make the margin configurable
+        layer_surface.set_anchor(conn, self.shared_state.config.position.into());
+        layer_surface.set_exclusive_zone(
+            conn,
+            (self.shared_state.config.height + self.shared_state.config.vertical_margin) as i32,
+        );
 
         // Note: layer_surface is commited when we receive the scale factor of this output
 

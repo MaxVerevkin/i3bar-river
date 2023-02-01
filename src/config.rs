@@ -26,6 +26,7 @@ pub struct Config {
     // font and size
     pub font: Font,
     pub height: u32,
+    pub vertical_margin: u32,
     pub separator_width: f64,
     pub tags_r: f64,
     pub tags_padding: f64,
@@ -57,6 +58,7 @@ impl Default for Config {
             tag_inactive_bg: Color::from_rgba_hex(0x282828ff),
             font: Font::new("monospace 10"),
             height: 24,
+            vertical_margin: 0,
             separator_width: 2.0,
             tags_r: 0.0,
             tags_padding: 25.0,

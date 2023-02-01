@@ -55,6 +55,7 @@ tag_inactive_fg = "#d79921"
 tag_inactive_bg = "#282828"
 font = "JetBrainsMono Nerd Font 10"
 height = 20
+vertical_margin = 0
 separator_width = 0
 tags_r = 6
 tags_padding = 25
