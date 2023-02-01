@@ -61,6 +61,7 @@ tags_padding = 25
 blocks_r = 6
 blocks_overlap = 0
 command = "i3status-rs"
+position = "top"
 hide_inactive_tags = true
 invert_touchpad_scrolling = true
 show_layout_name = false

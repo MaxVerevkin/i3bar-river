@@ -1,4 +1,5 @@
 use crate::color::Color;
+use crate::protocol::zwlr_layer_surface_v1;
 use anyhow::{Context, Result};
 use dirs_next::config_dir;
 use pangocairo::pango::FontDescription;
@@ -33,6 +34,7 @@ pub struct Config {
     // command
     pub command: Option<String>,
     // misc
+    pub position: Position,
     pub hide_inactive_tags: bool,
     pub invert_touchpad_scrolling: bool,
     pub show_layout_name: bool,
@@ -61,6 +63,7 @@ impl Default for Config {
             blocks_r: 0.0,
             blocks_overlap: 0.0,
             command: None,
+            position: Position::Top,
             hide_inactive_tags: true,
             invert_touchpad_scrolling: true,
             show_layout_name: true,
@@ -89,6 +92,22 @@ impl Config {
                 Self::default()
             }
         })
+    }
+}
+
+#[derive(Deserialize, Debug, Clone, Copy)]
+#[serde(rename_all = "lowercase")]
+pub enum Position {
+    Top,
+    Bottom,
+}
+
+impl From<Position> for zwlr_layer_surface_v1::Anchor {
+    fn from(position: Position) -> Self {
+        match position {
+            Position::Top => Self::Top | Self::Left | Self::Right,
+            Position::Bottom => Self::Bottom | Self::Left | Self::Right,
+        }
     }
 }
 

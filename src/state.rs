@@ -155,18 +155,16 @@ impl State {
 
         let surface = self.wl_compositor.create_surface(conn);
 
-        use zwlr_layer_shell_v1::Layer;
-        use zwlr_layer_surface_v1::Anchor;
         let layer_surface = self.layer_shell.get_layer_surface_with_cb(
             conn,
             surface,
             output,
-            Layer::Top,
+            zwlr_layer_shell_v1::Layer::Top,
             wayrs_client::cstr!("i3bar-river").into(),
             layer_surface_cb,
         );
         layer_surface.set_size(conn, 0, self.shared_state.config.height);
-        layer_surface.set_anchor(conn, Anchor::Top | Anchor::Left | Anchor::Right); // Top + Left + Right
+        layer_surface.set_anchor(conn, self.shared_state.config.position.into()); // Top + Left + Right
         layer_surface.set_exclusive_zone(conn, self.shared_state.config.height as i32 + 5); // TODO: make the margin configurable
 
         // Note: layer_surface is commited when we receive the scale factor of this output
