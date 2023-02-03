@@ -11,7 +11,7 @@ A list of things that are missing (for now):
 - Click events lack some info (IDK if anyone actually relies on `x`, `y`, `width`, etc.)
 - Tray icons
 
-## Advantages
+## Features
 
 - `river` support (obviously)
 - `short_text` switching is "progressive" (see https://github.com/i3/i3/issues/4113)

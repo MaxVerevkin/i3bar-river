@@ -1,3 +1,4 @@
+use crate::config::Position;
 use crate::cursor::CursorTheme;
 use crate::protocol::*;
 use crate::wm_info_provider::*;
@@ -178,8 +179,11 @@ impl State {
         layer_surface.set_exclusive_zone(
             conn,
             (self.shared_state.config.height) as i32
-                + self.shared_state.config.margin_top
-                + self.shared_state.config.margin_bottom,
+                + if config.position == Position::Top {
+                    self.shared_state.config.margin_bottom
+                } else {
+                    self.shared_state.config.margin_top
+                },
         );
 
         // Note: layer_surface is commited when we receive the scale factor of this output
