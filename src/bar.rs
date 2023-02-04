@@ -23,9 +23,12 @@ pub struct Bar {
     pub frame_cb: Option<WlCallback>,
     pub width: u32,
     pub height: u32,
-    pub scale: i32,
+    pub scale: u32,
+    pub scale120: Option<u32>,
     pub surface: WlSurface,
     pub layer_surface: ZwlrLayerSurfaceV1,
+    pub viewport: WpViewport,
+    pub fractional_scale: Option<WpFractionalScaleV1>,
     pub blocks_btns: ButtonManager<(Option<String>, Option<String>)>,
     pub wm_info: WmInfo,
     pub tags_btns: ButtonManager<String>,
@@ -84,17 +87,28 @@ impl Bar {
     pub fn frame(&mut self, conn: &mut Connection<State>, ss: &mut SharedState) {
         assert!(self.configured);
 
-        let stride = 4 * self.width as i32;
-        let width = self.width as i32;
-        let height = self.height as i32;
-        let width_f = width as f64;
-        let height_f = height as f64;
+        let (pix_width, pix_height, scale_f) = match self.scale120 {
+            Some(scale120) => (
+                // rounding halfway away from zero
+                (self.width * scale120 + 60) / 120,
+                (self.height * scale120 + 60) / 120,
+                scale120 as f64 / 120.0,
+            ),
+            None => (
+                self.width * self.scale,
+                self.height * self.scale,
+                self.scale as f64,
+            ),
+        };
+
+        let width_f = self.width as f64;
+        let height_f = self.height as f64;
 
         let (buffer, canvas) = ss.shm.alloc_buffer(
             conn,
-            width * self.scale,
-            height * self.scale,
-            stride * self.scale,
+            pix_width as i32,
+            pix_height as i32,
+            pix_width as i32 * 4,
             wl_shm::Format::Argb8888,
         );
 
@@ -102,16 +116,15 @@ impl Bar {
             cairo::ImageSurface::create_for_data_unsafe(
                 canvas.as_mut_ptr(),
                 cairo::Format::ARgb32,
-                width * self.scale,
-                height * self.scale,
-                stride * self.scale,
+                pix_width as i32,
+                pix_height as i32,
+                pix_width as i32 * 4,
             )
             .expect("cairo surface")
         };
 
         let cairo_ctx = cairo::Context::new(&cairo_surf).expect("cairo context");
-        cairo_ctx.scale(self.scale as f64, self.scale as f64);
-        self.surface.set_buffer_scale(conn, self.scale);
+        cairo_ctx.scale(scale_f, scale_f);
 
         // Background
         cairo_ctx.save().unwrap();
@@ -217,9 +230,11 @@ impl Bar {
             height_f,
         );
 
+        self.viewport
+            .set_destination(conn, self.width as i32, self.height as i32);
+
         self.surface.attach(conn, buffer.wl, 0, 0);
-        self.surface
-            .damage_buffer(conn, 0, 0, width * self.scale, height * self.scale);
+        self.surface.damage(conn, 0, 0, i32::MAX, i32::MAX);
         self.surface.commit(conn);
     }
 
