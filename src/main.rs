@@ -42,8 +42,7 @@ async fn main() -> anyhow::Result<()> {
                 conn.async_flush().await?;
             }
             reat_res = state.status_cmd_read() => {
-                reat_res?;
-                if let Err(e) = state.status_cmd_notify_available(&mut conn) {
+                if let Err(e) = reat_res.and_then(|_| state.status_cmd_notify_available(&mut conn)) {
                     if let Some(mut status_cmd) = state.shared_state.status_cmd.take() {
                         let _ = status_cmd.child.kill();
                     }
