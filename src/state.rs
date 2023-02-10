@@ -18,6 +18,8 @@ use crate::{
 pub struct State {
     wl_compositor: WlCompositor,
     layer_shell: ZwlrLayerShellV1,
+    viewporter: WpViewporter,
+    fractional_scale_manager: Option<WpFractionalScaleManagerV1>,
 
     pub seats: Vec<Seat>,
     pub bars: Vec<Bar>,
@@ -64,12 +66,10 @@ impl State {
             .is_ok();
 
         let mut this = Self {
-            wl_compositor: globals
-                .bind(conn, 4..=5)
-                .expect("could not bind wl_compositor"),
-            layer_shell: globals
-                .bind(conn, 1..=4)
-                .expect("could not bind layer_shell"),
+            wl_compositor: globals.bind(conn, 4..=5).unwrap(),
+            layer_shell: globals.bind(conn, 1..=4).unwrap(),
+            viewporter: globals.bind(conn, 1..=1).unwrap(),
+            fractional_scale_manager: globals.bind(conn, 1..=1).ok(),
 
             seats: Vec::new(),
             bars: Vec::new(),
@@ -156,6 +156,10 @@ impl State {
 
         let surface = self.wl_compositor.create_surface(conn);
 
+        let fractional_scale = self
+            .fractional_scale_manager
+            .map(|mgr| mgr.get_fractional_scale_with_cb(conn, surface, fractional_scale_cb));
+
         let layer_surface = self.layer_shell.get_layer_surface_with_cb(
             conn,
             surface,
@@ -196,7 +200,10 @@ impl State {
             width: 0,
             height: self.shared_state.config.height,
             scale: 1,
+            scale120: None,
             surface,
+            viewport: self.viewporter.get_viewport(conn, surface),
+            fractional_scale,
             layer_surface,
             blocks_btns: Default::default(),
             wm_info: Default::default(),
@@ -299,7 +306,7 @@ fn wl_output_cb(
             .iter_mut()
             .find(|bar| bar.output == output)
             .unwrap();
-        bar.scale = scale;
+        bar.scale = scale as u32;
         // If bar is not configured yet, it is because we were waiting for the "scale" event
         // before commiting the surface. Otherwise, there is no need to do any redrawing (we'll
         // do that after "configure" event).
@@ -449,7 +456,7 @@ fn wl_pointer_cb(
                     .set_cursor(
                         conn,
                         "default",
-                        bar.scale as u32,
+                        bar.scale,
                         args.serial,
                         &mut state.shared_state.shm,
                         seat.cursor_surface,
@@ -482,6 +489,24 @@ fn wl_pointer_cb(
             }
         }
         Event::AxisDiscrete(_) | Event::AxisValue120(_) => (),
+    }
+}
+
+fn fractional_scale_cb(
+    conn: &mut Connection<State>,
+    state: &mut State,
+    fractional_scale: WpFractionalScaleV1,
+    event: wp_fractional_scale_v1::Event,
+) {
+    let wp_fractional_scale_v1::Event::PreferredScale(scale120) = event;
+    let bar = state
+        .bars
+        .iter_mut()
+        .find(|b| b.fractional_scale == Some(fractional_scale))
+        .unwrap();
+    if bar.scale120 != Some(scale120) {
+        bar.scale120 = Some(scale120);
+        bar.request_frame(conn);
     }
 }
 
