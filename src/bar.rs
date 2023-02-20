@@ -3,6 +3,7 @@ use std::collections::BinaryHeap;
 use pangocairo::cairo;
 
 use wayrs_client::connection::Connection;
+use wayrs_shm_alloc::BufferSpec;
 
 use crate::button_manager::ButtonManager;
 use crate::color::Color;
@@ -106,10 +107,12 @@ impl Bar {
 
         let (buffer, canvas) = ss.shm.alloc_buffer(
             conn,
-            pix_width as i32,
-            pix_height as i32,
-            pix_width as i32 * 4,
-            wl_shm::Format::Argb8888,
+            BufferSpec {
+                width: pix_width,
+                height: pix_height,
+                stride: pix_width * 4,
+                format: wl_shm::Format::Argb8888,
+            },
         );
 
         let cairo_surf = unsafe {
@@ -233,7 +236,7 @@ impl Bar {
         self.viewport
             .set_destination(conn, self.width as i32, self.height as i32);
 
-        self.surface.attach(conn, buffer.wl, 0, 0);
+        self.surface.attach(conn, buffer.into_wl_buffer(), 0, 0);
         self.surface.damage(conn, 0, 0, i32::MAX, i32::MAX);
         self.surface.commit(conn);
     }

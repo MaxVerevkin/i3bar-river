@@ -9,7 +9,6 @@ mod bar;
 mod button_manager;
 mod color;
 mod config;
-mod cursor;
 mod i3bar_protocol;
 mod ord_adaptor;
 mod pointer_btn;

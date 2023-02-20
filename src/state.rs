@@ -1,5 +1,4 @@
 use crate::config::Position;
-use crate::cursor::CursorTheme;
 use crate::protocol::*;
 use crate::wm_info_provider::*;
 
@@ -8,7 +7,8 @@ use std::future::pending;
 use wayrs_client::connection::Connection;
 use wayrs_client::global::{Global, GlobalExt, Globals, GlobalsExt};
 use wayrs_client::proxy::Proxy;
-use wayrs_shm_alloc::{ShmAlloc, ShmAllocState};
+use wayrs_cursor::CursorTheme;
+use wayrs_shm_alloc::ShmAlloc;
 
 use crate::{
     bar::Bar, config::Config, i3bar_protocol::Block, pointer_btn::PointerBtn,
@@ -57,9 +57,9 @@ impl State {
 
         conn.set_callback_for(conn.registry(), wl_registry_cb);
 
-        let shm = globals.bind(conn, 1..=1).expect("could not bind wl_shm");
+        let wl_shm = globals.bind(conn, 1..=1).expect("could not bind wl_shm");
 
-        let mut cursor_theme = CursorTheme::new();
+        let mut cursor_theme = CursorTheme::new(None, None);
         let cursor_theme_ok = cursor_theme
             .ensure_cursor_is_loaded("default")
             .map_err(|e| error = Err(e.into()))
@@ -75,7 +75,7 @@ impl State {
             bars: Vec::new(),
 
             shared_state: SharedState {
-                shm: ShmAlloc::new(conn, shm, 1024),
+                shm: ShmAlloc::new(wl_shm),
                 config,
                 status_cmd,
                 blocks: Vec::new(),
@@ -255,12 +255,6 @@ impl State {
         }
 
         seat.cursor_surface.destroy(conn);
-    }
-}
-
-impl ShmAllocState for State {
-    fn shm_alloc(&mut self) -> &mut ShmAlloc {
-        &mut self.shared_state.shm
     }
 }
 
@@ -455,10 +449,10 @@ fn wl_pointer_cb(
                 cursor_theme
                     .set_cursor(
                         conn,
+                        &mut state.shared_state.shm,
                         "default",
                         bar.scale,
                         args.serial,
-                        &mut state.shared_state.shm,
                         seat.cursor_surface,
                         pointer,
                     )
