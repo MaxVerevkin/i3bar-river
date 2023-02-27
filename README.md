@@ -26,7 +26,7 @@ Just clone the repo and use `cargo` to build the project:
 ```
 git clone https://github.com/MaxVerevkin/i3bar-river
 cd i3bar-river
-cargo install --path .
+cargo install --path . --locked
 ```
 
 Then add this to the end of your river init script:
