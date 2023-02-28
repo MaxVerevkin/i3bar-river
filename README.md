@@ -19,6 +19,12 @@ A list of things that are missing (for now):
 
 ## Installation
 
+### Arch
+
+AUR: [i3bar-river-git](https://aur.archlinux.org/packages/i3bar-river-git)
+
+### From Source
+
 External dependencies: `libpango1.0-dev`.
 
 Just clone the repo and use `cargo` to build the project:
@@ -29,13 +35,13 @@ cd i3bar-river
 cargo install --path . --locked
 ```
 
-Then add this to the end of your river init script:
+## Configuration
+
+Add this to the end of your river init script:
 
 ```
 riverctl spawn i3bar-river
 ```
-
-## Configuration
 
 The configuration file should be stored in `$XDG_CONFIG_HOME/i3bar-river/config.toml` or `~/.config/i3bar-river/config.toml`.
 
