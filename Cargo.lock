@@ -966,9 +966,9 @@ dependencies = [
 
 [[package]]
 name = "wayrs-utils"
-version = "0.1.0"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cdfe083c28bb9ae239fb1fcbfa73b9386b29a26bb621f3df1ebd82ea44c04eb3"
+checksum = "daa3c9ec2f3a343a2b8495c8e61dcee3672d7ee15ebbb60327f7e05a0cb29413"
 dependencies = [
  "memmap2",
  "shmemfdrs",
