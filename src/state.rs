@@ -5,10 +5,9 @@ use crate::wm_info_provider::*;
 use std::future::pending;
 
 use wayrs_client::connection::Connection;
-use wayrs_client::global::{Globals, GlobalsExt};
+use wayrs_client::global::{Global, GlobalExt, Globals, GlobalsExt};
 use wayrs_client::proxy::Proxy;
 use wayrs_utils::cursor::CursorTheme;
-use wayrs_utils::outputs::{OutputHandler, Outputs};
 use wayrs_utils::seats::{SeatHandler, Seats};
 use wayrs_utils::shm_alloc::ShmAlloc;
 
@@ -26,7 +25,6 @@ pub struct State {
     seats: Seats,
     pointers: Vec<Pointer>,
 
-    outptus: Outputs,
     pub bars: Vec<Bar>,
 
     pub shared_state: SharedState,
@@ -59,6 +57,8 @@ impl State {
             .as_ref()
             .and_then(|cmd| StatusCmd::new(cmd).map_err(|e| error = Err(e)).ok());
 
+        conn.add_registry_cb(wl_registry_cb);
+
         let wl_shm = globals.bind(conn, 1..=1).expect("could not bind wl_shm");
 
         let mut cursor_theme = CursorTheme::new(None, None);
@@ -76,7 +76,6 @@ impl State {
             seats: Seats::bind(conn, globals),
             pointers: Vec::new(),
 
-            outptus: Outputs::bind(conn, globals),
             bars: Vec::new(),
 
             shared_state: SharedState {
@@ -90,6 +89,11 @@ impl State {
 
             cursor_theme: cursor_theme_ok.then_some(cursor_theme),
         };
+
+        globals
+            .iter()
+            .filter(|g| g.is::<WlOutput>())
+            .for_each(|g| this.bind_output(conn, g));
 
         if let Err(e) = error {
             this.set_error(conn, e.to_string());
@@ -141,56 +145,10 @@ impl State {
         Ok(())
     }
 
-    fn drop_bar(&mut self, conn: &mut Connection<Self>, bar_index: usize) {
-        let bar = self.bars.swap_remove(bar_index);
-        bar.layer_surface.destroy(conn);
-        bar.surface.destroy(conn);
-        if let Some(wm_info_provider) = &mut self.shared_state.wm_info_provider {
-            wm_info_provider.output_removed(conn, bar.output);
-        }
-    }
-}
-
-impl SeatHandler for State {
-    fn get_seats(&mut self) -> &mut Seats {
-        &mut self.seats
-    }
-
-    fn pointer_added(&mut self, conn: &mut Connection<Self>, seat: WlSeat) {
-        assert!(seat.version() >= 5);
-        self.pointers.push(Pointer {
-            seat,
-            pointer: seat.get_pointer_with_cb(conn, wl_pointer_cb),
-            cursor_surface: self.wl_compositor.create_surface(conn),
-            current_surface: None,
-            x: 0.0,
-            y: 0.0,
-            pending_button: None,
-            pending_scroll: 0.0,
-            scroll_frame: ScrollFrame::default(),
-        });
-    }
-
-    fn pointer_removed(&mut self, conn: &mut Connection<Self>, seat: WlSeat) {
-        let pointer_i = self.pointers.iter().position(|p| p.seat == seat).unwrap();
-        let pointer = self.pointers.swap_remove(pointer_i);
-        pointer.pointer.release(conn);
-        pointer.cursor_surface.destroy(conn);
-    }
-}
-
-impl OutputHandler for State {
-    fn get_outputs(&mut self) -> &mut Outputs {
-        &mut self.outptus
-    }
-
-    fn output_added(&mut self, conn: &mut Connection<Self>, output: WlOutput) {
-        let scale = self
-            .outptus
-            .iter()
-            .find(|o| o.wl_output == output)
-            .unwrap()
-            .scale;
+    fn bind_output(&mut self, conn: &mut Connection<Self>, global: &Global) {
+        let output = global
+            .bind_with_cb(conn, 2..=4, wl_output_cb)
+            .expect("could not bind wl_output");
 
         if let Some(wm_info_provider) = &mut self.shared_state.wm_info_provider {
             wm_info_provider.new_outut(conn, output);
@@ -232,15 +190,16 @@ impl OutputHandler for State {
                 },
         );
 
-        surface.commit(conn);
+        // Note: layer_surface is commited when we receive the scale factor of this output
 
         self.bars.push(Bar {
             output,
+            output_reg_name: global.name,
             configured: false,
             frame_cb: None,
             width: 0,
             height: self.shared_state.config.height,
-            scale,
+            scale: 1,
             scale120: None,
             surface,
             viewport: self.viewporter.get_viewport(conn, surface),
@@ -254,22 +213,83 @@ impl OutputHandler for State {
         });
     }
 
-    fn output_removed(&mut self, conn: &mut Connection<Self>, output: WlOutput) {
-        if let Some(bar_i) = self.bars.iter().position(|o| o.output == output) {
-            self.drop_bar(conn, bar_i);
+    fn drop_bar(&mut self, conn: &mut Connection<Self>, bar_index: usize) {
+        let bar = self.bars.swap_remove(bar_index);
+        bar.surface.destroy(conn);
+        bar.layer_surface.destroy(conn);
+        if let Some(wm_info_provider) = &mut self.shared_state.wm_info_provider {
+            wm_info_provider.output_removed(conn, bar.output);
+        }
+        if bar.output.version() >= 3 {
+            bar.output.release(conn);
         }
     }
+}
 
-    fn info_updated(
-        &mut self,
-        _: &mut Connection<Self>,
-        output: WlOutput,
-        mask: wayrs_utils::outputs::UpdatesMask,
-    ) {
-        if mask.scale {
-            let info = self.outptus.iter().find(|o| o.wl_output == output).unwrap();
-            let bar = self.bars.iter_mut().find(|b| b.output == output).unwrap();
-            bar.scale = info.scale;
+impl SeatHandler for State {
+    fn get_seats(&mut self) -> &mut Seats {
+        &mut self.seats
+    }
+
+    fn pointer_added(&mut self, conn: &mut Connection<Self>, seat: WlSeat) {
+        assert!(seat.version() >= 5);
+        self.pointers.push(Pointer {
+            seat,
+            pointer: seat.get_pointer_with_cb(conn, wl_pointer_cb),
+            cursor_surface: self.wl_compositor.create_surface(conn),
+            current_surface: None,
+            x: 0.0,
+            y: 0.0,
+            pending_button: None,
+            pending_scroll: 0.0,
+            scroll_frame: ScrollFrame::default(),
+        });
+    }
+
+    fn pointer_removed(&mut self, conn: &mut Connection<Self>, seat: WlSeat) {
+        let pointer_i = self.pointers.iter().position(|p| p.seat == seat).unwrap();
+        let pointer = self.pointers.swap_remove(pointer_i);
+        pointer.pointer.release(conn);
+        pointer.cursor_surface.destroy(conn);
+    }
+}
+
+fn wl_registry_cb(conn: &mut Connection<State>, state: &mut State, event: &wl_registry::Event) {
+    match event {
+        wl_registry::Event::Global(global) if global.is::<WlOutput>() => {
+            state.bind_output(conn, global);
+        }
+        wl_registry::Event::GlobalRemove(name) => {
+            if let Some(bar_index) = state
+                .bars
+                .iter()
+                .position(|bar| bar.output_reg_name == *name)
+            {
+                state.drop_bar(conn, bar_index);
+            }
+        }
+        _ => (),
+    }
+}
+
+fn wl_output_cb(
+    conn: &mut Connection<State>,
+    state: &mut State,
+    output: WlOutput,
+    event: wl_output::Event,
+) {
+    if let wl_output::Event::Scale(scale) = event {
+        let bar = state
+            .bars
+            .iter_mut()
+            .find(|bar| bar.output == output)
+            .unwrap();
+        bar.scale = scale as u32;
+        // If bar is not configured yet, it is because we were waiting for the "scale" event
+        // before commiting the surface. Otherwise, there is no need to do any redrawing (we'll
+        // do that after "configure" event).
+        if !bar.configured {
+            bar.surface.commit(conn);
         }
     }
 }
@@ -298,13 +318,12 @@ fn layer_surface_cb(
             }
         }
         zwlr_layer_surface_v1::Event::Closed => {
-            if let Some(bar_i) = state
+            let bar_index = state
                 .bars
                 .iter()
-                .position(|o| o.layer_surface == layer_surface)
-            {
-                state.drop_bar(conn, bar_i);
-            }
+                .position(|bar| bar.layer_surface == layer_surface)
+                .unwrap();
+            state.drop_bar(conn, bar_index);
         }
     }
 }

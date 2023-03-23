@@ -19,6 +19,7 @@ use crate::wm_info_provider::WmInfo;
 
 pub struct Bar {
     pub output: WlOutput,
+    pub output_reg_name: u32,
     pub configured: bool,
     pub frame_cb: Option<WlCallback>,
     pub width: u32,
