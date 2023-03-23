@@ -3,7 +3,7 @@ use std::collections::BinaryHeap;
 use pangocairo::cairo;
 
 use wayrs_client::connection::Connection;
-use wayrs_shm_alloc::BufferSpec;
+use wayrs_utils::shm_alloc::BufferSpec;
 
 use crate::button_manager::ButtonManager;
 use crate::color::Color;

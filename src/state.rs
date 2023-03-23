@@ -7,8 +7,8 @@ use std::future::pending;
 use wayrs_client::connection::Connection;
 use wayrs_client::global::{Global, GlobalExt, Globals, GlobalsExt};
 use wayrs_client::proxy::Proxy;
-use wayrs_cursor::CursorTheme;
-use wayrs_shm_alloc::ShmAlloc;
+use wayrs_utils::cursor::CursorTheme;
+use wayrs_utils::shm_alloc::ShmAlloc;
 
 use crate::{
     bar::Bar, config::Config, i3bar_protocol::Block, pointer_btn::PointerBtn,
@@ -55,7 +55,7 @@ impl State {
             .as_ref()
             .and_then(|cmd| StatusCmd::new(cmd).map_err(|e| error = Err(e)).ok());
 
-        conn.set_callback_for(conn.registry(), wl_registry_cb);
+        conn.add_registry_cb(wl_registry_cb);
 
         let wl_shm = globals.bind(conn, 1..=1).expect("could not bind wl_shm");
 
@@ -258,12 +258,7 @@ impl State {
     }
 }
 
-fn wl_registry_cb(
-    conn: &mut Connection<State>,
-    state: &mut State,
-    _: WlRegistry,
-    event: wl_registry::Event,
-) {
+fn wl_registry_cb(conn: &mut Connection<State>, state: &mut State, event: &wl_registry::Event) {
     match event {
         wl_registry::Event::Global(global) if global.is::<WlOutput>() => {
             state.bind_output(conn, &global);
@@ -275,11 +270,11 @@ fn wl_registry_cb(
             if let Some(bar_index) = state
                 .bars
                 .iter()
-                .position(|bar| bar.output_reg_name == name)
+                .position(|bar| bar.output_reg_name == *name)
             {
                 state.drop_bar(conn, bar_index);
             } else if let Some(seat_index) =
-                state.seats.iter().position(|seat| seat.reg_name == name)
+                state.seats.iter().position(|seat| seat.reg_name == *name)
             {
                 state.drop_seat(conn, seat_index);
             }
