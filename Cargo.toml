@@ -16,7 +16,7 @@ memchr = "2"
 thiserror = "1.0.38"
 
 wayrs-client = { version = "0.4", features = ["tokio"] }
-wayrs-utils = { version = "0.1", features = ["cursor", "shm_alloc", "seats"] }
+wayrs-utils = { version = "0.2", features = ["cursor", "shm_alloc", "seats", "outputs"] }
 wayrs-protocols = { version = "0.4", features = ["wlr-layer-shell-unstable-v1", "viewporter", "fractional-scale-v1"] }
 
 [dependencies.tokio]
