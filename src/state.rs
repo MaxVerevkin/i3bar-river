@@ -8,6 +8,7 @@ use wayrs_client::connection::Connection;
 use wayrs_client::global::{Global, GlobalExt, Globals, GlobalsExt};
 use wayrs_client::proxy::Proxy;
 use wayrs_utils::cursor::CursorTheme;
+use wayrs_utils::seats::{SeatHandler, Seats};
 use wayrs_utils::shm_alloc::ShmAlloc;
 
 use crate::{
@@ -21,7 +22,9 @@ pub struct State {
     viewporter: WpViewporter,
     fractional_scale_manager: Option<WpFractionalScaleManagerV1>,
 
-    pub seats: Vec<Seat>,
+    seats: Seats,
+    pointers: Vec<Pointer>,
+
     pub bars: Vec<Bar>,
 
     pub shared_state: SharedState,
@@ -29,10 +32,9 @@ pub struct State {
     cursor_theme: Option<CursorTheme>,
 }
 
-pub struct Seat {
+struct Pointer {
     seat: WlSeat,
-    reg_name: u32,
-    pointer: Option<WlPointer>,
+    pointer: WlPointer,
     cursor_surface: WlSurface,
     current_surface: Option<WlSurface>,
     x: f64,
@@ -71,7 +73,9 @@ impl State {
             viewporter: globals.bind(conn, 1..=1).unwrap(),
             fractional_scale_manager: globals.bind(conn, 1..=1).ok(),
 
-            seats: Vec::new(),
+            seats: Seats::bind(conn, globals),
+            pointers: Vec::new(),
+
             bars: Vec::new(),
 
             shared_state: SharedState {
@@ -86,10 +90,6 @@ impl State {
             cursor_theme: cursor_theme_ok.then_some(cursor_theme),
         };
 
-        globals
-            .iter()
-            .filter(|g| g.is::<WlSeat>())
-            .for_each(|g| this.bind_seat(conn, g));
         globals
             .iter()
             .filter(|g| g.is::<WlOutput>())
@@ -213,22 +213,6 @@ impl State {
         });
     }
 
-    fn bind_seat(&mut self, conn: &mut Connection<Self>, global: &Global) {
-        let seat: WlSeat = global.bind_with_cb(conn, 5..=8, wl_seat_cb).unwrap();
-        self.seats.push(Seat {
-            seat,
-            reg_name: global.name,
-            pointer: None,
-            cursor_surface: self.wl_compositor.create_surface(conn),
-            current_surface: None,
-            x: 0.0,
-            y: 0.0,
-            pending_button: None,
-            pending_scroll: 0.0,
-            scroll_frame: ScrollFrame::default(),
-        });
-    }
-
     fn drop_bar(&mut self, conn: &mut Connection<Self>, bar_index: usize) {
         let bar = self.bars.swap_remove(bar_index);
         bar.surface.destroy(conn);
@@ -240,31 +224,40 @@ impl State {
             bar.output.release(conn);
         }
     }
+}
 
-    fn drop_seat(&mut self, conn: &mut Connection<Self>, seat_index: usize) {
-        let seat = self.seats.swap_remove(seat_index);
+impl SeatHandler for State {
+    fn get_seats(&mut self) -> &mut Seats {
+        &mut self.seats
+    }
 
-        if let Some(pointer) = seat.pointer {
-            if pointer.version() >= 3 {
-                pointer.release(conn);
-            }
-        }
+    fn pointer_added(&mut self, conn: &mut Connection<Self>, seat: WlSeat) {
+        assert!(seat.version() >= 5);
+        self.pointers.push(Pointer {
+            seat,
+            pointer: seat.get_pointer_with_cb(conn, wl_pointer_cb),
+            cursor_surface: self.wl_compositor.create_surface(conn),
+            current_surface: None,
+            x: 0.0,
+            y: 0.0,
+            pending_button: None,
+            pending_scroll: 0.0,
+            scroll_frame: ScrollFrame::default(),
+        });
+    }
 
-        if seat.seat.version() >= 5 {
-            seat.seat.release(conn);
-        }
-
-        seat.cursor_surface.destroy(conn);
+    fn pointer_removed(&mut self, conn: &mut Connection<Self>, seat: WlSeat) {
+        let pointer_i = self.pointers.iter().position(|p| p.seat == seat).unwrap();
+        let pointer = self.pointers.swap_remove(pointer_i);
+        pointer.pointer.release(conn);
+        pointer.cursor_surface.destroy(conn);
     }
 }
 
 fn wl_registry_cb(conn: &mut Connection<State>, state: &mut State, event: &wl_registry::Event) {
     match event {
         wl_registry::Event::Global(global) if global.is::<WlOutput>() => {
-            state.bind_output(conn, &global);
-        }
-        wl_registry::Event::Global(global) if global.is::<WlSeat>() => {
-            state.bind_seat(conn, &global);
+            state.bind_output(conn, global);
         }
         wl_registry::Event::GlobalRemove(name) => {
             if let Some(bar_index) = state
@@ -273,10 +266,6 @@ fn wl_registry_cb(conn: &mut Connection<State>, state: &mut State, event: &wl_re
                 .position(|bar| bar.output_reg_name == *name)
             {
                 state.drop_bar(conn, bar_index);
-            } else if let Some(seat_index) =
-                state.seats.iter().position(|seat| seat.reg_name == *name)
-            {
-                state.drop_seat(conn, seat_index);
             }
         }
         _ => (),
@@ -339,47 +328,24 @@ fn layer_surface_cb(
     }
 }
 
-fn wl_seat_cb(
-    conn: &mut Connection<State>,
-    state: &mut State,
-    seat: WlSeat,
-    event: wl_seat::Event,
-) {
-    if let wl_seat::Event::Capabilities(capabilities) = event {
-        let seat = state.seats.iter_mut().find(|s| s.seat == seat).unwrap();
-        match &seat.pointer {
-            Some(pointer) if !capabilities.contains(wl_seat::Capability::Pointer) => {
-                if pointer.version() >= 3 {
-                    pointer.release(conn);
-                }
-                seat.pointer = None;
-            }
-            None if capabilities.contains(wl_seat::Capability::Pointer) => {
-                seat.pointer = Some(seat.seat.get_pointer_with_cb(conn, wl_pointer_cb));
-            }
-            _ => (),
-        }
-    }
-}
-
 fn wl_pointer_cb(
     conn: &mut Connection<State>,
     state: &mut State,
     pointer: WlPointer,
     event: wl_pointer::Event,
 ) {
-    let seat = state
-        .seats
+    let pointer = state
+        .pointers
         .iter_mut()
-        .find(|s| s.pointer == Some(pointer))
+        .find(|p| p.pointer == pointer)
         .unwrap();
 
     use wl_pointer::Event;
     match event {
         Event::Frame => {
-            let btn = seat.pending_button.take();
-            let scroll = seat.scroll_frame.finalize();
-            if let Some(surface) = seat.current_surface {
+            let btn = pointer.pending_button.take();
+            let scroll = pointer.scroll_frame.finalize();
+            if let Some(surface) = pointer.current_surface {
                 let bar = state
                     .bars
                     .iter_mut()
@@ -391,28 +357,28 @@ fn wl_pointer_cb(
                         conn,
                         &mut state.shared_state,
                         btn,
-                        seat.seat,
-                        seat.x,
-                        seat.y,
+                        pointer.seat,
+                        pointer.x,
+                        pointer.y,
                     )
                     .unwrap();
                 }
 
                 if scroll.is_finder && state.shared_state.config.invert_touchpad_scrolling {
-                    seat.pending_scroll -= scroll.absolute;
+                    pointer.pending_scroll -= scroll.absolute;
                 } else {
-                    seat.pending_scroll += scroll.absolute;
+                    pointer.pending_scroll += scroll.absolute;
                 }
 
                 if scroll.stop {
-                    seat.pending_scroll = 0.0;
+                    pointer.pending_scroll = 0.0;
                 }
 
-                let btn = if seat.pending_scroll >= 15.0 {
-                    seat.pending_scroll = 0.0;
+                let btn = if pointer.pending_scroll >= 15.0 {
+                    pointer.pending_scroll = 0.0;
                     Some(PointerBtn::WheelDown)
-                } else if seat.pending_scroll <= -15.0 {
-                    seat.pending_scroll = 0.0;
+                } else if pointer.pending_scroll <= -15.0 {
+                    pointer.pending_scroll = 0.0;
                     Some(PointerBtn::WheelUp)
                 } else {
                     None
@@ -423,9 +389,9 @@ fn wl_pointer_cb(
                         conn,
                         &mut state.shared_state,
                         btn,
-                        seat.seat,
-                        seat.x,
-                        seat.y,
+                        pointer.seat,
+                        pointer.x,
+                        pointer.y,
                     )
                     .unwrap();
                 }
@@ -437,9 +403,9 @@ fn wl_pointer_cb(
                 .iter()
                 .find(|bar| bar.surface.id() == args.surface)
                 .unwrap();
-            seat.current_surface = Some(bar.surface);
-            seat.x = args.surface_x.as_f64();
-            seat.y = args.surface_y.as_f64();
+            pointer.current_surface = Some(bar.surface);
+            pointer.x = args.surface_x.as_f64();
+            pointer.y = args.surface_y.as_f64();
             if let Some(cursor_theme) = &mut state.cursor_theme {
                 cursor_theme
                     .set_cursor(
@@ -448,33 +414,33 @@ fn wl_pointer_cb(
                         "default",
                         bar.scale,
                         args.serial,
-                        seat.cursor_surface,
-                        pointer,
+                        pointer.cursor_surface,
+                        pointer.pointer,
                     )
                     .unwrap();
             }
         }
-        Event::Leave(_) => seat.current_surface = None,
+        Event::Leave(_) => pointer.current_surface = None,
         Event::Motion(args) => {
-            seat.x = args.surface_x.as_f64();
-            seat.y = args.surface_y.as_f64();
+            pointer.x = args.surface_x.as_f64();
+            pointer.y = args.surface_y.as_f64();
         }
         Event::Button(args) => {
             if args.state == wl_pointer::ButtonState::Pressed {
-                seat.pending_button = Some(args.button.into());
+                pointer.pending_button = Some(args.button.into());
             }
         }
         Event::Axis(args) => {
             if args.axis == wl_pointer::Axis::VerticalScroll {
-                seat.scroll_frame.absolute += args.value.as_f64();
+                pointer.scroll_frame.absolute += args.value.as_f64();
             }
         }
         Event::AxisSource(source) => {
-            seat.scroll_frame.is_finder = source == wl_pointer::AxisSource::Finger;
+            pointer.scroll_frame.is_finder = source == wl_pointer::AxisSource::Finger;
         }
         Event::AxisStop(args) => {
             if args.axis == wl_pointer::Axis::VerticalScroll {
-                seat.scroll_frame.stop = true;
+                pointer.scroll_frame.stop = true;
             }
         }
         Event::AxisDiscrete(_) | Event::AxisValue120(_) => (),
