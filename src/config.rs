@@ -90,13 +90,13 @@ impl Config {
                         read_to_string(config_path).context("Failed to read configuration")?;
                     toml::from_str(&config).context("Failed to deserialize configuration")?
                 } else {
-                    info!("Using default configuration");
+                    eprintln!("Using default configuration");
                     Self::default()
                 }
             }
             None => {
-                warn!("Could not find the configuration path");
-                info!("Using default configuration");
+                eprintln!("Could not find the configuration path");
+                eprintln!("Using default configuration");
                 Self::default()
             }
         })

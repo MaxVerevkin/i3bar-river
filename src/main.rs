@@ -2,8 +2,6 @@
 
 #[macro_use]
 extern crate anyhow;
-#[macro_use]
-extern crate log;
 
 mod bar;
 mod button_manager;
@@ -31,8 +29,6 @@ use state::State;
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> anyhow::Result<()> {
-    env_logger::init();
-
     let mut signals = Signals::new([SIGUSR1])?;
 
     let mut conn = Connection::connect()?;
