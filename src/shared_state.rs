@@ -2,6 +2,7 @@ use crate::{
     config::Config, i3bar_protocol::Block, state::ComputedBlock, status_cmd::StatusCmd,
     wm_info_provider::WmInfoProvider,
 };
+
 use wayrs_utils::shm_alloc::ShmAlloc;
 
 pub struct SharedState {

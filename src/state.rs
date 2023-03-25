@@ -1,4 +1,3 @@
-use crate::config::Position;
 use crate::protocol::*;
 use crate::wm_info_provider::*;
 
@@ -25,6 +24,7 @@ pub struct State {
     seats: Seats,
     pointers: Vec<Pointer>,
 
+    pub hidden: bool,
     pub bars: Vec<Bar>,
 
     pub shared_state: SharedState,
@@ -76,6 +76,7 @@ impl State {
             seats: Seats::bind(conn, globals),
             pointers: Vec::new(),
 
+            hidden: false,
             bars: Vec::new(),
 
             shared_state: SharedState {
@@ -169,33 +170,11 @@ impl State {
             layer_surface_cb,
         );
 
-        let config = &self.shared_state.config;
-
-        layer_surface.set_size(conn, 0, config.height);
-        layer_surface.set_anchor(conn, config.position.into());
-        layer_surface.set_margin(
-            conn,
-            config.margin_top,
-            config.margin_right,
-            config.margin_bottom,
-            config.margin_left,
-        );
-        layer_surface.set_exclusive_zone(
-            conn,
-            (self.shared_state.config.height) as i32
-                + if config.position == Position::Top {
-                    self.shared_state.config.margin_bottom
-                } else {
-                    self.shared_state.config.margin_top
-                },
-        );
-
-        // Note: layer_surface is commited when we receive the scale factor of this output
-
-        self.bars.push(Bar {
+        let mut bar = Bar {
             output,
             output_reg_name: global.name,
-            configured: false,
+            hidden: self.hidden,
+            mapped: false,
             frame_cb: None,
             width: 0,
             height: self.shared_state.config.height,
@@ -210,7 +189,13 @@ impl State {
             tags_btns: Default::default(),
             tags_computed: Vec::new(),
             layout_name_computed: None,
-        });
+        };
+
+        if !self.hidden {
+            bar.show(conn, &self.shared_state);
+        }
+
+        self.bars.push(bar);
     }
 
     fn drop_bar(&mut self, conn: &mut Connection<Self>, bar_index: usize) {
@@ -222,6 +207,17 @@ impl State {
         }
         if bar.output.version() >= 3 {
             bar.output.release(conn);
+        }
+    }
+
+    pub fn toggle_visibility(&mut self, conn: &mut Connection<Self>) {
+        self.hidden = !self.hidden;
+        for bar in &mut self.bars {
+            if self.hidden {
+                bar.hide(conn);
+            } else {
+                bar.show(conn, &self.shared_state);
+            }
         }
     }
 }
@@ -274,7 +270,7 @@ fn wl_registry_cb(conn: &mut Connection<State>, state: &mut State, event: &wl_re
 }
 
 fn wl_output_cb(
-    conn: &mut Connection<State>,
+    _: &mut Connection<State>,
     state: &mut State,
     output: WlOutput,
     event: wl_output::Event,
@@ -286,12 +282,6 @@ fn wl_output_cb(
             .find(|bar| bar.output == output)
             .unwrap();
         bar.scale = scale as u32;
-        // If bar is not configured yet, it is because we were waiting for the "scale" event
-        // before commiting the surface. Otherwise, there is no need to do any redrawing (we'll
-        // do that after "configure" event).
-        if !bar.configured {
-            bar.surface.commit(conn);
-        }
     }
 }
 
@@ -308,13 +298,16 @@ fn layer_surface_cb(
                 .iter_mut()
                 .find(|bar| bar.layer_surface == layer_surface)
                 .unwrap();
+            if bar.hidden {
+                return;
+            }
             assert_ne!(args.width, 0);
             bar.width = args.width;
             bar.layer_surface.ack_configure(conn, args.serial);
-            if bar.configured {
+            if bar.mapped {
                 bar.request_frame(conn);
             } else {
-                bar.configured = true;
+                bar.mapped = true;
                 bar.frame(conn, &mut state.shared_state);
             }
         }

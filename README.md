@@ -16,6 +16,7 @@ A list of things that are missing (for now):
 - `river` support (obviously)
 - `short_text` switching is "progressive" (see https://github.com/i3/i3/issues/4113)
 - Support for rounded corners
+- Show/hide with `pkill -SIGUSR1 i3bar-river`
 
 ## Installation
 

@@ -3,11 +3,12 @@ use std::collections::BinaryHeap;
 use pangocairo::cairo;
 
 use wayrs_client::connection::Connection;
+use wayrs_client::proxy::Proxy;
 use wayrs_utils::shm_alloc::BufferSpec;
 
 use crate::button_manager::ButtonManager;
 use crate::color::Color;
-use crate::config::Config;
+use crate::config::{Config, Position};
 use crate::i3bar_protocol::{self, Block, MinWidth};
 use crate::ord_adaptor::DefaultLess;
 use crate::pointer_btn::PointerBtn;
@@ -20,7 +21,8 @@ use crate::wm_info_provider::WmInfo;
 pub struct Bar {
     pub output: WlOutput,
     pub output_reg_name: u32,
-    pub configured: bool,
+    pub hidden: bool,
+    pub mapped: bool,
     pub frame_cb: Option<WlCallback>,
     pub width: u32,
     pub height: u32,
@@ -86,7 +88,7 @@ impl Bar {
     }
 
     pub fn frame(&mut self, conn: &mut Connection<State>, ss: &mut SharedState) {
-        assert!(self.configured);
+        assert!(self.mapped);
 
         let (pix_width, pix_height, scale_f) = match self.scale120 {
             Some(scale120) => (
@@ -242,7 +244,7 @@ impl Bar {
     }
 
     pub fn request_frame(&mut self, conn: &mut Connection<State>) {
-        if self.configured && self.frame_cb.is_none() {
+        if self.mapped && !self.hidden && self.frame_cb.is_none() {
             self.frame_cb = Some(self.surface.frame_with_cb(conn, |conn, state, cb, _| {
                 if let Some(bar) = state.bars.iter_mut().find(|bar| bar.frame_cb == Some(cb)) {
                     bar.frame_cb = None;
@@ -251,6 +253,42 @@ impl Bar {
             }));
             self.surface.commit(conn);
         }
+    }
+
+    pub fn show(&mut self, conn: &mut Connection<State>, shared_state: &SharedState) {
+        assert!(!self.mapped);
+
+        self.hidden = false;
+
+        let config = &shared_state.config;
+
+        self.layer_surface.set_size(conn, 0, config.height);
+        self.layer_surface.set_anchor(conn, config.position.into());
+        self.layer_surface.set_margin(
+            conn,
+            config.margin_top,
+            config.margin_right,
+            config.margin_bottom,
+            config.margin_left,
+        );
+        self.layer_surface.set_exclusive_zone(
+            conn,
+            (shared_state.config.height) as i32
+                + if config.position == Position::Top {
+                    shared_state.config.margin_bottom
+                } else {
+                    shared_state.config.margin_top
+                },
+        );
+
+        self.surface.commit(conn);
+    }
+
+    pub fn hide(&mut self, conn: &mut Connection<State>) {
+        self.hidden = true;
+        self.mapped = false;
+        self.surface.attach(conn, WlBuffer::null(), 0, 0);
+        self.surface.commit(conn);
     }
 }
 

@@ -20,6 +20,11 @@ mod text;
 mod utils;
 mod wm_info_provider;
 
+use signal_hook::consts::*;
+use signal_hook_tokio::Signals;
+
+use futures::stream::StreamExt;
+
 use wayrs_client::connection::Connection;
 
 use state::State;
@@ -27,6 +32,8 @@ use state::State;
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> anyhow::Result<()> {
     env_logger::init();
+
+    let mut signals = Signals::new([SIGUSR1])?;
 
     let mut conn = Connection::connect()?;
     let globals = conn.async_collect_initial_globals().await?;
@@ -48,6 +55,10 @@ async fn main() -> anyhow::Result<()> {
                     state.set_error(&mut conn, e.to_string());
                 }
                 conn.async_flush().await?;
+            }
+            Some(signal) = signals.next() => match signal {
+                SIGUSR1 => state.toggle_visibility(&mut conn),
+                _ => unreachable!(),
             }
         }
     }
