@@ -1,12 +1,12 @@
 use crate::color::Color;
 use crate::protocol::zwlr_layer_surface_v1;
 use anyhow::{Context, Result};
-use dirs_next::config_dir;
 use pangocairo::pango::FontDescription;
 use serde::{de, Deserialize};
-use std::fmt;
 use std::fs::read_to_string;
 use std::ops::Deref;
+use std::path::PathBuf;
+use std::{env, fmt};
 
 #[derive(Deserialize, Debug)]
 #[serde(deny_unknown_fields, default)]
@@ -101,6 +101,12 @@ impl Config {
             }
         })
     }
+}
+
+fn config_dir() -> Option<PathBuf> {
+    env::var_os("XDG_CONFIG_HOME")
+        .map(PathBuf::from)
+        .or_else(|| Some(PathBuf::from(env::var_os("HOME")?).join("config")))
 }
 
 #[derive(Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
