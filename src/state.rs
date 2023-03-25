@@ -7,7 +7,7 @@ use std::future::pending;
 use wayrs_client::connection::Connection;
 use wayrs_client::global::{Global, GlobalExt, Globals, GlobalsExt};
 use wayrs_client::proxy::Proxy;
-use wayrs_utils::cursor::CursorTheme;
+use wayrs_utils::cursor::{CursorImage, CursorTheme, ThemedPointer};
 use wayrs_utils::seats::{SeatHandler, Seats};
 use wayrs_utils::shm_alloc::ShmAlloc;
 
@@ -29,13 +29,13 @@ pub struct State {
 
     pub shared_state: SharedState,
 
-    cursor_theme: Option<CursorTheme>,
+    default_cursor: Option<CursorImage>,
 }
 
 struct Pointer {
     seat: WlSeat,
     pointer: WlPointer,
-    cursor_surface: WlSurface,
+    themed_pointer: ThemedPointer,
     current_surface: Option<WlSurface>,
     x: f64,
     y: f64,
@@ -61,11 +61,11 @@ impl State {
 
         let wl_shm = globals.bind(conn, 1..=1).expect("could not bind wl_shm");
 
-        let mut cursor_theme = CursorTheme::new(None, None);
-        let cursor_theme_ok = cursor_theme
-            .ensure_cursor_is_loaded("default")
+        let cursor_theme = CursorTheme::new(None, None);
+        let default_cursor = cursor_theme
+            .get_image("default")
             .map_err(|e| error = Err(e.into()))
-            .is_ok();
+            .ok();
 
         let mut this = Self {
             wl_compositor: globals.bind(conn, 4..=5).unwrap(),
@@ -87,7 +87,7 @@ impl State {
                 wm_info_provider: wm_info_provider::bind_wayland(conn, globals, wm_info_cb),
             },
 
-            cursor_theme: cursor_theme_ok.then_some(cursor_theme),
+            default_cursor,
         };
 
         globals
@@ -233,10 +233,11 @@ impl SeatHandler for State {
 
     fn pointer_added(&mut self, conn: &mut Connection<Self>, seat: WlSeat) {
         assert!(seat.version() >= 5);
+        let pointer = seat.get_pointer_with_cb(conn, wl_pointer_cb);
         self.pointers.push(Pointer {
             seat,
-            pointer: seat.get_pointer_with_cb(conn, wl_pointer_cb),
-            cursor_surface: self.wl_compositor.create_surface(conn),
+            pointer,
+            themed_pointer: ThemedPointer::new(conn, pointer, self.wl_compositor),
             current_surface: None,
             x: 0.0,
             y: 0.0,
@@ -250,7 +251,7 @@ impl SeatHandler for State {
         let pointer_i = self.pointers.iter().position(|p| p.seat == seat).unwrap();
         let pointer = self.pointers.swap_remove(pointer_i);
         pointer.pointer.release(conn);
-        pointer.cursor_surface.destroy(conn);
+        pointer.themed_pointer.destroy(conn);
     }
 }
 
@@ -406,18 +407,14 @@ fn wl_pointer_cb(
             pointer.current_surface = Some(bar.surface);
             pointer.x = args.surface_x.as_f64();
             pointer.y = args.surface_y.as_f64();
-            if let Some(cursor_theme) = &mut state.cursor_theme {
-                cursor_theme
-                    .set_cursor(
-                        conn,
-                        &mut state.shared_state.shm,
-                        "default",
-                        bar.scale,
-                        args.serial,
-                        pointer.cursor_surface,
-                        pointer.pointer,
-                    )
-                    .unwrap();
+            if let Some(default_cursor) = &state.default_cursor {
+                pointer.themed_pointer.set_cursor(
+                    conn,
+                    &mut state.shared_state.shm,
+                    default_cursor,
+                    bar.scale,
+                    args.serial,
+                );
             }
         }
         Event::Leave(_) => pointer.current_surface = None,
