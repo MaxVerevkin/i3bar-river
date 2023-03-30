@@ -8,7 +8,6 @@ mod button_manager;
 mod color;
 mod config;
 mod i3bar_protocol;
-mod ord_adaptor;
 mod pointer_btn;
 mod protocol;
 mod shared_state;

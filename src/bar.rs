@@ -1,5 +1,3 @@
-use std::collections::BinaryHeap;
-
 use pangocairo::cairo;
 
 use wayrs_client::connection::Connection;
@@ -10,7 +8,6 @@ use crate::button_manager::ButtonManager;
 use crate::color::Color;
 use crate::config::{Config, Position};
 use crate::i3bar_protocol::{self, Block, MinWidth};
-use crate::ord_adaptor::DefaultLess;
 use crate::pointer_btn::PointerBtn;
 use crate::protocol::*;
 use crate::shared_state::SharedState;
@@ -389,8 +386,9 @@ fn render_blocks(
 
     #[derive(Debug)]
     struct LogialBlock<'a> {
-        blocks: Vec<(&'a ComputedBlock, bool)>,
+        blocks: Vec<&'a ComputedBlock>,
         delta: f64,
+        switched_to_short: bool,
         separator: bool,
         separator_block_width: u8,
     }
@@ -411,6 +409,7 @@ fn render_blocks(
         let mut series = LogialBlock {
             blocks: Vec::with_capacity(s_end - s_start),
             delta: 0.0,
+            switched_to_short: false,
             separator: blocks[s_end - 1].separator,
             separator_block_width: blocks[s_end - 1].separator_block_width,
         };
@@ -420,7 +419,7 @@ fn render_blocks(
             if let Some(short) = &comp.short {
                 series.delta += comp.full.width - short.width;
             }
-            series.blocks.push((comp, false));
+            series.blocks.push(comp);
         }
         if s_end != blocks.len() {
             blocks_width += series.separator_block_width as f64;
@@ -431,16 +430,16 @@ fn render_blocks(
 
     // Progressively switch to short mode
     if offset_left + blocks_width > full_width {
-        let mut heap = BinaryHeap::new();
-        for (i, b) in blocks_computed.iter().enumerate() {
-            if b.delta > 0.0 {
-                heap.push((DefaultLess(b.delta), i));
-            }
-        }
-        while let Some((DefaultLess(delta), to_switch)) = heap.pop() {
-            for comp in &mut blocks_computed[to_switch].blocks {
-                comp.1 = true;
-            }
+        let mut deltas: Vec<_> = blocks_computed
+            .iter()
+            .map(|b| b.delta)
+            .enumerate()
+            .filter(|(_, delta)| *delta > 0.0)
+            .collect();
+        // Sort in descending order
+        deltas.sort_unstable_by(|(_, d1), (_, d2)| d2.total_cmp(d1));
+        for (to_switch, delta) in deltas {
+            blocks_computed[to_switch].switched_to_short = true;
             blocks_width -= delta;
             if offset_left + blocks_width <= full_width {
                 break;
@@ -448,15 +447,15 @@ fn render_blocks(
         }
     }
 
-    // Remove all the empy blocks
+    // Remove all the empty blocks
     for s in &mut blocks_computed {
-        s.blocks.retain(|(text, is_short)| {
-            (*is_short
+        s.blocks.retain(|text| {
+            (s.switched_to_short
                 && text
                     .short
                     .as_ref()
                     .map_or(text.full.width > 0.0, |s| s.width > 0.0))
-                || (!is_short && text.full.width > 0.0)
+                || (!s.switched_to_short && text.full.width > 0.0)
         });
     }
 
@@ -465,9 +464,9 @@ fn render_blocks(
     let mut j = 0;
     for series in blocks_computed {
         let s_len = series.blocks.len();
-        for (i, (computed, is_short)) in series.blocks.into_iter().enumerate() {
+        for (i, computed) in series.blocks.into_iter().enumerate() {
             let block = &computed.block;
-            let to_render = if is_short {
+            let to_render = if series.switched_to_short {
                 computed.short.as_ref().unwrap_or(&computed.full)
             } else {
                 &computed.full
