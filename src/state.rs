@@ -1,7 +1,8 @@
 use crate::protocol::*;
 use crate::wm_info_provider::*;
 
-use std::future::pending;
+use std::fmt::Display;
+use std::os::fd::{AsRawFd, RawFd};
 
 use wayrs_client::connection::Connection;
 use wayrs_client::global::{Global, GlobalExt, Globals, GlobalsExt};
@@ -108,11 +109,11 @@ impl State {
         self.draw_all(conn);
     }
 
-    pub fn set_error(&mut self, conn: &mut Connection<Self>, error: impl Into<String>) {
+    pub fn set_error(&mut self, conn: &mut Connection<Self>, error: impl Display) {
         self.set_blocks(
             conn,
             vec![Block {
-                full_text: error.into(),
+                full_text: error.to_string(),
                 ..Default::default()
             }],
         );
@@ -124,26 +125,11 @@ impl State {
         }
     }
 
-    pub async fn status_cmd_read(&mut self) -> anyhow::Result<()> {
-        match &mut self.shared_state.status_cmd {
-            Some(cmd) => cmd.read().await,
-            None => {
-                pending::<()>().await;
-                unreachable!()
-            }
-        }
-    }
-
-    pub fn status_cmd_notify_available(
-        &mut self,
-        conn: &mut Connection<Self>,
-    ) -> anyhow::Result<()> {
-        if let Some(cmd) = &mut self.shared_state.status_cmd {
-            if let Some(blocks) = cmd.notify_available()? {
-                self.set_blocks(conn, blocks);
-            }
-        }
-        Ok(())
+    pub fn status_cmd_fd(&self) -> Option<RawFd> {
+        self.shared_state
+            .status_cmd
+            .as_ref()
+            .map(|cmd| cmd.output.as_raw_fd())
     }
 
     fn bind_output(&mut self, conn: &mut Connection<Self>, global: &Global) {

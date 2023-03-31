@@ -1,10 +1,8 @@
 use std::io::Write;
-use std::process::{Child, ChildStdin, Command, Stdio};
+use std::os::fd::AsRawFd;
+use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 
 use anyhow::Result;
-
-use tokio::io::AsyncReadExt;
-use tokio::process::ChildStdout;
 
 use crate::i3bar_protocol::{Block, Event, Protocol};
 
@@ -17,6 +15,7 @@ pub struct StatusCmd {
     input: ChildStdin,
     protocol: Protocol,
     buf: Vec<u8>,
+    buf_used: usize,
 }
 
 impl StatusCmd {
@@ -28,39 +27,48 @@ impl StatusCmd {
             .spawn()?;
         let output = child.stdout.take().unwrap();
         let input = child.stdin.take().unwrap();
+        nix::fcntl::fcntl(
+            output.as_raw_fd(),
+            nix::fcntl::F_SETFL(nix::fcntl::OFlag::O_NONBLOCK),
+        )?;
         Ok(Self {
             child,
-            output: ChildStdout::from_std(output)?,
+            output,
             input,
             protocol: Protocol::Unknown,
-            buf: Vec::with_capacity(INITIAL_BUF_CAPACITY),
+            buf: vec![0; INITIAL_BUF_CAPACITY],
+            buf_used: 0,
         })
     }
 
-    pub fn notify_available(&mut self) -> Result<Option<Vec<Block>>> {
-        let rem = self.protocol.process_new_bytes(&self.buf)?;
-        if rem.is_empty() {
-            self.buf.clear();
-        } else {
-            let used = self.buf.len() - rem.len();
-            self.buf.drain(..used);
-        }
-        Ok(self.protocol.get_blocks())
-    }
-
-    pub async fn read(&mut self) -> Result<()> {
-        assert!(self.buf.capacity() >= INITIAL_BUF_CAPACITY);
-        if self.buf.capacity() == self.buf.len() {
+    pub fn read(&mut self) -> Result<Option<Vec<Block>>> {
+        assert!(self.buf.len() >= INITIAL_BUF_CAPACITY);
+        if self.buf.len() == self.buf_used {
             // Double the capacity
-            self.buf.reserve(self.buf.len());
+            self.buf.resize(self.buf_used * 2, 0);
         }
 
-        let read_len = self.output.read_buf(&mut self.buf).await?;
-        if read_len == 0 {
-            bail!("status command exited");
+        match nix::unistd::read(self.output.as_raw_fd(), &mut self.buf[self.buf_used..]) {
+            Ok(0) => bail!("status command exited"),
+            Ok(n) => self.buf_used += n,
+            Err(nix::errno::Errno::EAGAIN) => return Ok(None),
+            Err(e) => bail!(e),
         }
 
-        Ok(())
+        let rem = self
+            .protocol
+            .process_new_bytes(&self.buf[..self.buf_used])?;
+
+        if rem.is_empty() {
+            self.buf_used = 0;
+        } else {
+            let rem_len = rem.len();
+            self.buf
+                .copy_within((self.buf_used - rem_len)..self.buf_used, 0);
+            self.buf_used = rem_len;
+        }
+
+        Ok(self.protocol.get_blocks())
     }
 
     pub fn send_click_event(&mut self, event: &Event) -> Result<()> {
