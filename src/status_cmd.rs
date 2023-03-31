@@ -1,12 +1,13 @@
 use std::io::Write;
-use std::os::fd::AsRawFd;
+use std::os::fd::{AsRawFd, RawFd};
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 
 use anyhow::Result;
 
-use crate::i3bar_protocol::{Block, Event, Protocol};
+use nix::errno::Errno;
+use nix::libc;
 
-const INITIAL_BUF_CAPACITY: usize = 4096;
+use crate::i3bar_protocol::{Block, Event, Protocol};
 
 #[derive(Debug)]
 pub struct StatusCmd {
@@ -15,7 +16,6 @@ pub struct StatusCmd {
     input: ChildStdin,
     protocol: Protocol,
     buf: Vec<u8>,
-    buf_used: usize,
 }
 
 impl StatusCmd {
@@ -36,37 +36,21 @@ impl StatusCmd {
             output,
             input,
             protocol: Protocol::Unknown,
-            buf: vec![0; INITIAL_BUF_CAPACITY],
-            buf_used: 0,
+            buf: Vec::new(),
         })
     }
 
     pub fn read(&mut self) -> Result<Option<Vec<Block>>> {
-        assert!(self.buf.len() >= INITIAL_BUF_CAPACITY);
-        if self.buf.len() == self.buf_used {
-            // Double the capacity
-            self.buf.resize(self.buf_used * 2, 0);
-        }
-
-        match nix::unistd::read(self.output.as_raw_fd(), &mut self.buf[self.buf_used..]) {
+        match read(self.output.as_raw_fd(), &mut self.buf) {
             Ok(0) => bail!("status command exited"),
-            Ok(n) => self.buf_used += n,
-            Err(nix::errno::Errno::EAGAIN) => return Ok(None),
+            Ok(_n) => (),
+            Err(Errno::EAGAIN) => return Ok(None),
             Err(e) => bail!(e),
         }
 
-        let rem = self
-            .protocol
-            .process_new_bytes(&self.buf[..self.buf_used])?;
-
-        if rem.is_empty() {
-            self.buf_used = 0;
-        } else {
-            let rem_len = rem.len();
-            self.buf
-                .copy_within((self.buf_used - rem_len)..self.buf_used, 0);
-            self.buf_used = rem_len;
-        }
+        let rem = self.protocol.process_new_bytes(&self.buf)?;
+        let used = self.buf.len() - rem.len();
+        self.buf.drain(..used);
 
         Ok(self.protocol.get_blocks())
     }
@@ -77,4 +61,30 @@ impl StatusCmd {
         }
         Ok(())
     }
+}
+
+/// Read from a raw file descriptor to the vector.
+///
+/// Appends data at the end of the buffer. Resizes vector as needed.
+pub fn read(fd: RawFd, buf: &mut Vec<u8>) -> nix::Result<usize> {
+    if buf.capacity() - buf.len() < 1024 {
+        buf.reserve(buf.capacity().max(1024));
+    }
+
+    let res = unsafe {
+        libc::read(
+            fd,
+            buf.as_mut_ptr().add(buf.len()) as *mut libc::c_void,
+            (buf.capacity() - buf.len()) as libc::size_t,
+        )
+    };
+
+    let read = Errno::result(res).map(|r| r as usize)?;
+    if read > 0 {
+        unsafe {
+            buf.set_len(buf.len() + read);
+        }
+    }
+
+    Ok(read)
 }
