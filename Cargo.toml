@@ -1,7 +1,12 @@
 [package]
 name = "i3bar-river"
+description = "A port of i3bar for river"
+repository = "https://github.com/MaxVerevkin/i3bar-river"
+readme = "README.md"
 version = "0.1.0"
 edition = "2021"
+license = "GPL-3.0-only"
+authors = ["MaxVerevkin <maxxverrr@gmail.com>"]
 
 [dependencies]
 anyhow = "1"

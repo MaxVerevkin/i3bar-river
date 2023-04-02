@@ -28,12 +28,8 @@ AUR: [i3bar-river-git](https://aur.archlinux.org/packages/i3bar-river-git)
 
 External dependencies: `libpango1.0-dev`.
 
-Just clone the repo and use `cargo` to build the project:
-
 ```
-git clone https://github.com/MaxVerevkin/i3bar-river
-cd i3bar-river
-cargo install --path . --locked
+cargo install --locked i3bar-river
 ```
 
 ## Configuration
