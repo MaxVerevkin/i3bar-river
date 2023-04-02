@@ -247,7 +247,6 @@ dependencies = [
  "serde",
  "serde_json",
  "signal-hook",
- "thiserror",
  "toml",
  "wayrs-client",
  "wayrs-protocols",

@@ -40,8 +40,8 @@ impl StatusCmd {
         })
     }
 
-    pub fn read(&mut self) -> Result<Option<Vec<Block>>> {
-        match read(self.output.as_raw_fd(), &mut self.buf) {
+    pub fn receive_blocks(&mut self) -> Result<Option<Vec<Block>>> {
+        match read_to_vec(self.output.as_raw_fd(), &mut self.buf) {
             Ok(0) => bail!("status command exited"),
             Ok(_n) => (),
             Err(Errno::EAGAIN) => return Ok(None),
@@ -57,7 +57,7 @@ impl StatusCmd {
 
     pub fn send_click_event(&mut self, event: &Event) -> Result<()> {
         if self.protocol.supports_clicks() {
-            writeln!(self.input, "{}", serde_json::to_string(event).unwrap())?;
+            writeln!(self.input, "{}", serde_json::to_string(event)?)?;
         }
         Ok(())
     }
@@ -66,7 +66,7 @@ impl StatusCmd {
 /// Read from a raw file descriptor to the vector.
 ///
 /// Appends data at the end of the buffer. Resizes vector as needed.
-pub fn read(fd: RawFd, buf: &mut Vec<u8>) -> nix::Result<usize> {
+pub fn read_to_vec(fd: RawFd, buf: &mut Vec<u8>) -> nix::Result<usize> {
     if buf.capacity() - buf.len() < 1024 {
         buf.reserve(buf.capacity().max(1024));
     }
@@ -79,12 +79,8 @@ pub fn read(fd: RawFd, buf: &mut Vec<u8>) -> nix::Result<usize> {
         )
     };
 
-    let read = Errno::result(res).map(|r| r as usize)?;
-    if read > 0 {
-        unsafe {
-            buf.set_len(buf.len() + read);
-        }
-    }
+    let read = Errno::result(res)? as usize;
+    unsafe { buf.set_len(buf.len() + read) };
 
     Ok(read)
 }

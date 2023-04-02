@@ -62,7 +62,7 @@ fn main() -> anyhow::Result<()> {
                     conn.flush(IoMode::Blocking)?;
                 }
                 Err(e) if e.kind() == ErrorKind::WouldBlock => (),
-                Err(e) => return Err(e.into()),
+                Err(e) => bail!(e),
             }
         }
 
@@ -72,7 +72,13 @@ fn main() -> anyhow::Result<()> {
         }
 
         if fds.len() > 2 && fds[2].any().unwrap_or(false) {
-            match state.shared_state.status_cmd.as_mut().unwrap().read() {
+            match state
+                .shared_state
+                .status_cmd
+                .as_mut()
+                .unwrap()
+                .receive_blocks()
+            {
                 Ok(None) => (),
                 Ok(Some(blocks)) => {
                     state.set_blocks(&mut conn, blocks);
