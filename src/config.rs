@@ -106,7 +106,7 @@ impl Config {
 fn config_dir() -> Option<PathBuf> {
     env::var_os("XDG_CONFIG_HOME")
         .map(PathBuf::from)
-        .or_else(|| Some(PathBuf::from(env::var_os("HOME")?).join("config")))
+        .or_else(|| Some(PathBuf::from(env::var_os("HOME")?).join(".config")))
 }
 
 #[derive(Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
