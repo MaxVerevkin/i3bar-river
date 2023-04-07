@@ -49,12 +49,14 @@ pub struct ComputedText {
 
 impl ComputedText {
     pub fn new(text: &str, mut attr: Attributes, context: &cairo::Context) -> Self {
+        let text = text.replace('\n', "\u{23CE}");
+
         let layout = pangocairo::create_layout(context);
         layout.set_font_description(Some(attr.font));
         if attr.markup {
-            layout.set_markup(text);
+            layout.set_markup(&text);
         } else {
-            layout.set_text(text);
+            layout.set_text(&text);
         }
 
         let (text_width, text_height) = layout.pixel_size();
