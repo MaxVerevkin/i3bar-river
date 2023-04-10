@@ -69,6 +69,7 @@ fn main() -> anyhow::Result<()> {
         if fds[1].any().unwrap_or(false) {
             nix::unistd::read(sig_read, &mut [0; 1])?;
             state.toggle_visibility(&mut conn);
+            conn.flush(IoMode::Blocking)?;
         }
 
         if fds.len() > 2 && fds[2].any().unwrap_or(false) {
