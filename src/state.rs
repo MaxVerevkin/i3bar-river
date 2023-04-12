@@ -305,6 +305,7 @@ fn layer_surface_cb(
                 .unwrap();
             state.drop_bar(conn, bar_index);
         }
+        _ => (),
     }
 }
 
@@ -419,7 +420,7 @@ fn wl_pointer_cb(
                 pointer.scroll_frame.stop = true;
             }
         }
-        Event::AxisDiscrete(_) | Event::AxisValue120(_) => (),
+        _ => (),
     }
 }
 
@@ -429,7 +430,7 @@ fn fractional_scale_cb(
     fractional_scale: WpFractionalScaleV1,
     event: wp_fractional_scale_v1::Event,
 ) {
-    let wp_fractional_scale_v1::Event::PreferredScale(scale120) = event;
+    let wp_fractional_scale_v1::Event::PreferredScale(scale120) = event else { return };
     let bar = state
         .bars
         .iter_mut()

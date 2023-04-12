@@ -676,9 +676,9 @@ checksum = "49874b5167b65d7193b8aba1567f5c7d93d001cafc34600cee003eda787e483f"
 
 [[package]]
 name = "wayrs-client"
-version = "0.5.0"
+version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9db989c01a4c0bf6549c82c08b325cc3ee0f87f0e12137859686b329202a2707"
+checksum = "ed413f9d3bd0bb8de25ec136021ad06188999216af0d78f7fc3f5f7dc6f9b96a"
 dependencies = [
  "nix",
  "thiserror",
@@ -687,18 +687,18 @@ dependencies = [
 
 [[package]]
 name = "wayrs-protocols"
-version = "0.5.0"
+version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "89f2cc382c222b490e76071afc66d752433822bdeb2fd691ae7527f77adc66a7"
+checksum = "167ea752a509ad8e252446c5832591a4db77a10996650cdae2933d2e997a5e62"
 dependencies = [
  "wayrs-client",
 ]
 
 [[package]]
 name = "wayrs-scanner"
-version = "0.4.0"
+version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "92d7707f78f8cd5d745891311fc08cd76ba80bef0f593f94cd59450151432939"
+checksum = "0f78ba1bbb0cceb45e3cc435777743efbadcf94a31cb9f1503ac0d1d5626514b"
 dependencies = [
  "convert_case",
  "proc-macro2",
@@ -709,9 +709,9 @@ dependencies = [
 
 [[package]]
 name = "wayrs-utils"
-version = "0.4.0-beta.1"
+version = "0.4.0-beta.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "85f5b5d29578e9bf93fa800c1fe168d648f49e422ab1385da85e8f4222cc28aa"
+checksum = "8bd51c1721f4e6d1c7b82d4c45aa5da232eb9c24310dcd0d172d85a811c516a9"
 dependencies = [
  "memmap2",
  "shmemfdrs",
