@@ -4,3 +4,4 @@ pub use wayrs_protocols::viewporter::*;
 pub use wayrs_protocols::wlr_layer_shell_unstable_v1::*;
 wayrs_client::scanner::generate!("protocols/river-status-unstable-v1.xml");
 wayrs_client::scanner::generate!("protocols/river-control-unstable-v1.xml");
+wayrs_client::scanner::generate!("protocols/ext-workspace-unstable-v1.xml");
