@@ -1,17 +1,16 @@
 use crate::color::Color;
-use once_cell::sync::Lazy;
 use pango::FontDescription;
 use pangocairo::{cairo, pango};
 use serde::Deserialize;
 use std::f64::consts::{FRAC_PI_2, PI, TAU};
 
 thread_local! {
-    pub static PANGO_CTX: Lazy<pango::Context> = Lazy::new(|| {
+    pub static PANGO_CTX: pango::Context = {
         let context = pango::Context::new();
         let fontmap = pangocairo::FontMap::new();
         context.set_font_map(Some(&fontmap));
         context
-    });
+    };
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -62,8 +61,6 @@ impl ComputedText {
         let text = text.replace('\n', "\u{23CE}");
 
         let layout = PANGO_CTX.with(|ctx| pango::Layout::new(ctx));
-        layout.set_font_description(Some(attr.font));
-
         layout.set_font_description(Some(attr.font));
         if attr.markup {
             layout.set_markup(&text);
