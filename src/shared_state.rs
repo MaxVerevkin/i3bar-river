@@ -1,5 +1,5 @@
 use crate::{
-    config::Config, i3bar_protocol::Block, state::ComputedBlock, status_cmd::StatusCmd,
+    blocks_cache::BlocksCache, config::Config, status_cmd::StatusCmd,
     wm_info_provider::WmInfoProvider,
 };
 
@@ -9,7 +9,6 @@ pub struct SharedState {
     pub shm: ShmAlloc,
     pub config: Config,
     pub status_cmd: Option<StatusCmd>,
-    pub blocks: Vec<Block>,
-    pub blocks_cache: Vec<ComputedBlock>,
+    pub blocks_cache: BlocksCache,
     pub wm_info_provider: Option<Box<dyn WmInfoProvider>>,
 }

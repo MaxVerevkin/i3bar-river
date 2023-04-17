@@ -4,6 +4,7 @@
 extern crate anyhow;
 
 mod bar;
+mod blocks_cache;
 mod button_manager;
 mod color;
 mod config;

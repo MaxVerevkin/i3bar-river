@@ -1,3 +1,4 @@
+use crate::blocks_cache::BlocksCache;
 use crate::protocol::*;
 use crate::wm_info_provider::*;
 
@@ -13,7 +14,7 @@ use wayrs_utils::shm_alloc::ShmAlloc;
 
 use crate::{
     bar::Bar, config::Config, i3bar_protocol::Block, pointer_btn::PointerBtn,
-    shared_state::SharedState, status_cmd::StatusCmd, text::ComputedText, wm_info_provider,
+    shared_state::SharedState, status_cmd::StatusCmd, wm_info_provider,
 };
 
 pub struct State {
@@ -84,8 +85,7 @@ impl State {
                 shm: ShmAlloc::new(wl_shm),
                 config,
                 status_cmd,
-                blocks: Vec::new(),
-                blocks_cache: Vec::new(),
+                blocks_cache: BlocksCache::default(),
                 wm_info_provider: wm_info_provider::bind_wayland(conn, globals, wm_info_cb),
             },
 
@@ -105,7 +105,9 @@ impl State {
     }
 
     pub fn set_blocks(&mut self, conn: &mut Connection<Self>, blocks: Vec<Block>) {
-        self.shared_state.blocks = blocks;
+        self.shared_state
+            .blocks_cache
+            .process_new_blocks(&self.shared_state.config, &blocks);
         self.draw_all(conn);
     }
 
@@ -446,14 +448,6 @@ fn wm_info_cb(conn: &mut Connection<State>, state: &mut State, output: WlOutput,
     let bar = state.bars.iter_mut().find(|b| b.output == output).unwrap();
     bar.set_wm_info(info);
     bar.request_frame(conn);
-}
-
-#[derive(Debug)]
-pub struct ComputedBlock {
-    pub block: Block,
-    pub full: ComputedText,
-    pub short: Option<ComputedText>,
-    pub min_width: Option<f64>,
 }
 
 #[derive(Debug, Default, Clone, Copy)]

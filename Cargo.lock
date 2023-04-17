@@ -243,6 +243,7 @@ dependencies = [
  "anyhow",
  "memchr",
  "nix",
+ "once_cell",
  "pangocairo",
  "serde",
  "serde_json",

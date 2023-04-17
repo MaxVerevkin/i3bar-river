@@ -1,8 +1,18 @@
 use crate::color::Color;
+use once_cell::sync::Lazy;
 use pango::FontDescription;
 use pangocairo::{cairo, pango};
 use serde::Deserialize;
 use std::f64::consts::{FRAC_PI_2, PI, TAU};
+
+thread_local! {
+    pub static PANGO_CTX: Lazy<pango::Context> = Lazy::new(|| {
+        let context = pango::Context::new();
+        let fontmap = pangocairo::FontMap::new();
+        context.set_font_map(Some(&fontmap));
+        context
+    });
+}
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct RenderOptions {
@@ -48,10 +58,12 @@ pub struct ComputedText {
 }
 
 impl ComputedText {
-    pub fn new(text: &str, mut attr: Attributes, context: &cairo::Context) -> Self {
+    pub fn new(text: &str, mut attr: Attributes) -> Self {
         let text = text.replace('\n', "\u{23CE}");
 
-        let layout = pangocairo::create_layout(context);
+        let layout = PANGO_CTX.with(|ctx| pango::Layout::new(ctx));
+        layout.set_font_description(Some(attr.font));
+
         layout.set_font_description(Some(attr.font));
         if attr.markup {
             layout.set_markup(&text);
@@ -136,7 +148,7 @@ fn rounded_rectangle(
     }
 }
 
-pub fn width_of(text: &str, context: &cairo::Context, markup: bool, font: &FontDescription) -> f64 {
+pub fn width_of(text: &str, markup: bool, font: &FontDescription) -> f64 {
     ComputedText::new(
         text,
         Attributes {
@@ -147,7 +159,6 @@ pub fn width_of(text: &str, context: &cairo::Context, markup: bool, font: &FontD
             align: Default::default(),
             markup,
         },
-        context,
     )
     .width
 }

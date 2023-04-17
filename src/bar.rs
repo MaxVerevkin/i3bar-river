@@ -4,14 +4,15 @@ use wayrs_client::connection::Connection;
 use wayrs_client::proxy::Proxy;
 use wayrs_utils::shm_alloc::BufferSpec;
 
+use crate::blocks_cache::ComputedBlock;
 use crate::button_manager::ButtonManager;
 use crate::color::Color;
 use crate::config::{Config, Position};
-use crate::i3bar_protocol::{self, Block, MinWidth};
+use crate::i3bar_protocol;
 use crate::pointer_btn::PointerBtn;
 use crate::protocol::*;
 use crate::shared_state::SharedState;
-use crate::state::{ComputedBlock, State};
+use crate::state::State;
 use crate::text::{self, ComputedText, RenderOptions};
 use crate::wm_info_provider::WmInfo;
 
@@ -151,7 +152,7 @@ impl Bar {
                 } else {
                     continue;
                 };
-                let comp = compute_tag_label(&tag.name, &ss.config, &cairo_ctx);
+                let comp = compute_tag_label(&tag.name, &ss.config);
                 self.tags_btns
                     .push(offset_left, comp.width, tag.name.clone());
                 offset_left += comp.width;
@@ -201,7 +202,6 @@ impl Bar {
                             align: Default::default(),
                             markup: false,
                         },
-                        &cairo_ctx,
                     )
                 });
                 text.render(
@@ -224,8 +224,7 @@ impl Bar {
         render_blocks(
             &cairo_ctx,
             &ss.config,
-            &ss.blocks,
-            &mut ss.blocks_cache,
+            ss.blocks_cache.get_computed(),
             &mut self.blocks_btns,
             offset_left,
             width_f,
@@ -293,98 +292,12 @@ impl Bar {
 fn render_blocks(
     context: &cairo::Context,
     config: &Config,
-    blocks: &[Block],
-    blocks_cache: &mut Vec<ComputedBlock>,
+    blocks: &[ComputedBlock],
     buttons: &mut ButtonManager<(Option<String>, Option<String>)>,
     offset_left: f64,
     full_width: f64,
     full_height: f64,
 ) {
-    let comp_min_width = |block: &Block| {
-        let markup = block.markup.as_deref() == Some("pango");
-        match &block.min_width {
-            Some(MinWidth::Pixels(p)) => Some(*p as f64),
-            Some(MinWidth::Text(t)) => Some(text::width_of(t, context, markup, &config.font.0)),
-            None => None,
-        }
-    };
-    let comp_full = |block: &Block, min_width: Option<f64>| {
-        let markup = block.markup.as_deref() == Some("pango");
-        text::ComputedText::new(
-            &block.full_text,
-            text::Attributes {
-                font: &config.font,
-                padding_left: 0.0,
-                padding_right: 0.0,
-                min_width,
-                align: block.align.unwrap_or_default(),
-                markup,
-            },
-            context,
-        )
-    };
-    let comp_short = |block: &Block, min_width: Option<f64>| {
-        let markup = block.markup.as_deref() == Some("pango");
-        block.short_text.as_ref().map(|short_text| {
-            text::ComputedText::new(
-                short_text,
-                text::Attributes {
-                    font: &config.font,
-                    padding_left: 0.0,
-                    padding_right: 0.0,
-                    min_width,
-                    align: block.align.unwrap_or_default(),
-                    markup,
-                },
-                context,
-            )
-        })
-    };
-
-    // update cashe
-    if blocks.len() != blocks_cache.len() {
-        blocks_cache.clear();
-        for block in blocks {
-            let mw = comp_min_width(block);
-            blocks_cache.push(ComputedBlock {
-                block: block.clone(),
-                full: comp_full(block, mw),
-                short: comp_short(block, mw),
-                min_width: mw,
-            });
-        }
-    } else {
-        for (block, computed) in blocks.iter().zip(blocks_cache.iter_mut()) {
-            if block.min_width != computed.block.min_width || block.markup != computed.block.markup
-            {
-                let mw = comp_min_width(block);
-                *computed = ComputedBlock {
-                    block: block.clone(),
-                    full: comp_full(block, mw),
-                    short: comp_short(block, mw),
-                    min_width: mw,
-                };
-            } else {
-                if block.full_text != computed.block.full_text {
-                    computed.block.full_text = block.full_text.clone();
-                    computed.full = comp_full(block, computed.min_width);
-                }
-                if block.short_text != computed.block.short_text {
-                    computed.block.full_text = block.full_text.clone();
-                    computed.short = comp_short(block, computed.min_width);
-                }
-                computed.block.color = block.color;
-                computed.block.background = block.background;
-                computed.block.align = block.align;
-                computed.block.name = block.name.clone();
-                computed.block.instance = block.instance.clone();
-                computed.block.separator = block.separator;
-                computed.block.separator_block_width = block.separator_block_width;
-            }
-        }
-    }
-
-    #[derive(Debug)]
     struct LogialBlock<'a> {
         blocks: Vec<&'a ComputedBlock>,
         delta: f64,
@@ -398,10 +311,10 @@ fn render_blocks(
     let mut s_start = 0;
     while s_start < blocks.len() {
         let mut s_end = s_start + 1;
-        let series_name = &blocks[s_start].name;
+        let series_name = &blocks[s_start].block.name;
         while s_end < blocks.len()
-            && blocks[s_end - 1].separator_block_width == 0
-            && &blocks[s_end].name == series_name
+            && blocks[s_end - 1].block.separator_block_width == 0
+            && &blocks[s_end].block.name == series_name
         {
             s_end += 1;
         }
@@ -410,11 +323,11 @@ fn render_blocks(
             blocks: Vec::with_capacity(s_end - s_start),
             delta: 0.0,
             switched_to_short: false,
-            separator: blocks[s_end - 1].separator,
-            separator_block_width: blocks[s_end - 1].separator_block_width,
+            separator: blocks[s_end - 1].block.separator,
+            separator_block_width: blocks[s_end - 1].block.separator_block_width,
         };
 
-        for comp in &blocks_cache[s_start..s_end] {
+        for comp in &blocks[s_start..s_end] {
             blocks_width += comp.full.width;
             if let Some(short) = &comp.short {
                 series.delta += comp.full.width - short.width;
@@ -505,7 +418,7 @@ fn render_blocks(
     }
 }
 
-pub fn compute_tag_label(label: &str, config: &Config, context: &cairo::Context) -> ComputedText {
+pub fn compute_tag_label(label: &str, config: &Config) -> ComputedText {
     ComputedText::new(
         label,
         text::Attributes {
@@ -516,6 +429,5 @@ pub fn compute_tag_label(label: &str, config: &Config, context: &cairo::Context)
             align: Default::default(),
             markup: false,
         },
-        context,
     )
 }
