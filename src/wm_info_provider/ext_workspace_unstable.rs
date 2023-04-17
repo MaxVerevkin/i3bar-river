@@ -57,12 +57,23 @@ impl ExtWorkspaceUnstable {
 
     pub fn click_on_tag(
         &mut self,
-        _: &mut Connection<State>,
+        conn: &mut Connection<State>,
         _: WlOutput,
         _: WlSeat,
-        _: &str,
-        _: PointerBtn,
+        tag: &str,
+        btn: PointerBtn,
     ) {
+        if btn != PointerBtn::Left {
+            return;
+        }
+
+        let Some(ws) = self
+            .groups
+            .iter()
+            .find_map(|g| g.workspaces.iter().find(|w| w.name.as_deref() == Some(tag)))
+        else { return };
+
+        ws.workspace_handle.activate(conn);
     }
 }
 
