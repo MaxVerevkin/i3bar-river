@@ -1,7 +1,6 @@
 use pangocairo::cairo;
 
 use wayrs_client::connection::Connection;
-use wayrs_client::proxy::Proxy;
 use wayrs_utils::shm_alloc::BufferSpec;
 
 use crate::blocks_cache::ComputedBlock;
@@ -234,7 +233,8 @@ impl Bar {
         self.viewport
             .set_destination(conn, self.width as i32, self.height as i32);
 
-        self.surface.attach(conn, buffer.into_wl_buffer(), 0, 0);
+        self.surface
+            .attach(conn, Some(buffer.into_wl_buffer()), 0, 0);
         self.surface.damage(conn, 0, 0, i32::MAX, i32::MAX);
         self.surface.commit(conn);
     }
@@ -283,7 +283,7 @@ impl Bar {
     pub fn hide(&mut self, conn: &mut Connection<State>) {
         self.hidden = true;
         self.mapped = false;
-        self.surface.attach(conn, WlBuffer::null(), 0, 0);
+        self.surface.attach(conn, None, 0, 0);
         self.surface.commit(conn);
     }
 }

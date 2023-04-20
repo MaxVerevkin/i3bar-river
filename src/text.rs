@@ -60,7 +60,7 @@ impl ComputedText {
     pub fn new(text: &str, mut attr: Attributes) -> Self {
         let text = text.replace('\n', "\u{23CE}");
 
-        let layout = PANGO_CTX.with(|ctx| pango::Layout::new(ctx));
+        let layout = PANGO_CTX.with(pango::Layout::new);
         layout.set_font_description(Some(attr.font));
         if attr.markup {
             layout.set_markup(&text);

@@ -152,7 +152,7 @@ impl State {
         let layer_surface = self.layer_shell.get_layer_surface_with_cb(
             conn,
             surface,
-            output,
+            Some(output),
             zwlr_layer_shell_v1::Layer::Top,
             wayrs_client::cstr!("i3bar-river").into(),
             layer_surface_cb,
