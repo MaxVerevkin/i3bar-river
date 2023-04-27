@@ -18,7 +18,7 @@ pub struct Block {
     #[serde(default)]
     pub min_width: Option<MinWidth>,
     #[serde(default)]
-    pub align: Option<Align>,
+    pub align: Align,
     #[serde(default)]
     pub name: Option<String>,
     #[serde(default)]

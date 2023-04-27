@@ -107,7 +107,7 @@ impl State {
     pub fn set_blocks(&mut self, conn: &mut Connection<Self>, blocks: Vec<Block>) {
         self.shared_state
             .blocks_cache
-            .process_new_blocks(&self.shared_state.config, &blocks);
+            .process_new_blocks(&self.shared_state.config, blocks);
         self.draw_all(conn);
     }
 
