@@ -61,8 +61,6 @@ impl State {
 
         conn.add_registry_cb(wl_registry_cb);
 
-        let wl_shm = globals.bind(conn, 1..=1).expect("could not bind wl_shm");
-
         let cursor_theme = CursorTheme::new(None, None);
         let default_cursor = cursor_theme
             .get_image("default")
@@ -82,7 +80,7 @@ impl State {
             bars: Vec::new(),
 
             shared_state: SharedState {
-                shm: ShmAlloc::new(wl_shm),
+                shm: ShmAlloc::bind(conn, globals).unwrap(),
                 config,
                 status_cmd,
                 blocks_cache: BlocksCache::default(),

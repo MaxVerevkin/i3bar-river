@@ -1,5 +1,3 @@
-#![allow(clippy::enum_variant_names)]
-
 use wayrs_client;
 pub use wayrs_client::protocol::*;
 pub use wayrs_protocols::fractional_scale_v1::*;
