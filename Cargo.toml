@@ -19,7 +19,7 @@ signal-hook = { version = "0.3", default-features = false }
 nix = { version = "0.26", default-features = false, features = ["fs", "poll"] }
 
 wayrs-client = "0.10" 
-wayrs-utils = { version = "0.5.0", features = ["cursor", "shm_alloc", "seats"] }
+wayrs-utils = { version = "0.6.0", features = ["cursor", "shm_alloc", "seats"] }
 wayrs-protocols = { version = "0.10", features = ["wlr-layer-shell-unstable-v1", "viewporter", "fractional-scale-v1"] }
 
 [profile.release]

@@ -8,7 +8,7 @@ use std::os::fd::{AsRawFd, RawFd};
 use wayrs_client::connection::Connection;
 use wayrs_client::global::{Global, GlobalExt, Globals, GlobalsExt};
 use wayrs_client::proxy::Proxy;
-use wayrs_utils::cursor::{CursorImage, CursorTheme, ThemedPointer};
+use wayrs_utils::cursor::{CursorImage, CursorShape, CursorTheme, ThemedPointer};
 use wayrs_utils::seats::{SeatHandler, Seats};
 use wayrs_utils::shm_alloc::ShmAlloc;
 
@@ -31,6 +31,7 @@ pub struct State {
 
     pub shared_state: SharedState,
 
+    cursor_theme: CursorTheme,
     default_cursor: Option<CursorImage>,
 }
 
@@ -61,9 +62,9 @@ impl State {
 
         conn.add_registry_cb(wl_registry_cb);
 
-        let cursor_theme = CursorTheme::new(None, None);
+        let cursor_theme = CursorTheme::new(conn, globals);
         let default_cursor = cursor_theme
-            .get_image("default")
+            .get_image(CursorShape::Default)
             .map_err(|e| error = Err(e.into()))
             .ok();
 
@@ -87,6 +88,7 @@ impl State {
                 wm_info_provider: wm_info_provider::bind_wayland(conn, globals, wm_info_cb),
             },
 
+            cursor_theme,
             default_cursor,
         };
 
@@ -219,7 +221,7 @@ impl SeatHandler for State {
         self.pointers.push(Pointer {
             seat,
             pointer,
-            themed_pointer: ThemedPointer::new(conn, pointer, self.wl_compositor),
+            themed_pointer: self.cursor_theme.get_themed_pointer(conn, pointer),
             current_surface: None,
             x: 0.0,
             y: 0.0,
@@ -232,8 +234,8 @@ impl SeatHandler for State {
     fn pointer_removed(&mut self, conn: &mut Connection<Self>, seat: WlSeat) {
         let pointer_i = self.pointers.iter().position(|p| p.seat == seat).unwrap();
         let pointer = self.pointers.swap_remove(pointer_i);
-        pointer.pointer.release(conn);
         pointer.themed_pointer.destroy(conn);
+        pointer.pointer.release(conn);
     }
 }
 
