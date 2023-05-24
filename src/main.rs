@@ -1,5 +1,3 @@
-#![allow(clippy::single_component_path_imports)]
-
 #[macro_use]
 extern crate anyhow;
 
