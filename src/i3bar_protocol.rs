@@ -2,9 +2,8 @@ use crate::color::Color;
 use crate::pointer_btn::PointerBtn;
 use crate::text::Align;
 use crate::utils::{de_first_json, de_last_json, last_line, trim_ascii_start};
-use serde::Deserialize;
-use serde::Serialize;
-use std::io::{Error, ErrorKind, Result};
+use serde::{de, Deserialize, Serialize};
+use std::io::{self, Error, ErrorKind};
 
 #[derive(Clone, Deserialize, Default, Debug)]
 pub struct Block {
@@ -39,11 +38,10 @@ fn def_sep_width() -> u8 {
     9
 }
 
-#[derive(Deserialize, Clone, Debug, PartialEq, Eq)]
-#[serde(untagged)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum MinWidth {
     Text(String),
-    Pixels(u32),
+    Pixels(u64),
 }
 
 #[derive(Serialize, Default)]
@@ -95,7 +93,7 @@ pub enum Protocol {
 
 impl Protocol {
     /// Extract new data from `bytes`, return unused bytes.
-    pub fn process_new_bytes<'a>(&mut self, bytes: &'a [u8]) -> Result<&'a [u8]> {
+    pub fn process_new_bytes<'a>(&mut self, bytes: &'a [u8]) -> io::Result<&'a [u8]> {
         match self {
             Self::Unknown => match de_first_json::<JsonHeader>(bytes) {
                 Ok((Some(header), rem)) if header.version == 1 => {
@@ -166,5 +164,54 @@ impl Protocol {
             Self::JsonNotStarted { header } | Self::Json { header, .. } => header.click_events,
             _ => false,
         }
+    }
+}
+
+impl<'de> Deserialize<'de> for MinWidth {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        struct MinWidthVisitor;
+
+        impl<'de> de::Visitor<'de> for MinWidthVisitor {
+            type Value = MinWidth;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("positive integer or string")
+            }
+
+            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                Ok(MinWidth::Text(v.to_owned()))
+            }
+
+            fn visit_string<E>(self, v: String) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                Ok(MinWidth::Text(v))
+            }
+
+            fn visit_u64<E>(self, v: u64) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                Ok(MinWidth::Pixels(v))
+            }
+
+            fn visit_i64<E>(self, v: i64) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                Ok(MinWidth::Pixels(
+                    v.try_into().map_err(|_| E::custom("invalid min_width"))?,
+                ))
+            }
+        }
+
+        deserializer.deserialize_any(MinWidthVisitor)
     }
 }
