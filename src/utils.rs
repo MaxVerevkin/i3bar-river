@@ -49,6 +49,20 @@ pub fn de_first_json<'a, T: Deserialize<'a>>(
     }
 }
 
+/// Returns a byte slice with leading ASCII whitespace bytes removed.
+///
+/// TODO: remove if/when slice::trim_ascii_start is stabilized.
+pub fn trim_ascii_start(mut bytes: &[u8]) -> &[u8] {
+    while let [first, rest @ ..] = bytes {
+        if first.is_ascii_whitespace() {
+            bytes = rest;
+        } else {
+            break;
+        }
+    }
+    bytes
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -101,5 +115,20 @@ mod tests {
 
         let s = b"hello\nworld\n...";
         assert_eq!(last_line(s), Some((str!("world"), str!("..."))));
+    }
+
+    #[test]
+    fn test_trim_start() {
+        let s = b" ";
+        assert_eq!(trim_ascii_start(s), b"");
+
+        let s = b"hello";
+        assert_eq!(trim_ascii_start(s), b"hello");
+
+        let s = b"\t \nhello";
+        assert_eq!(trim_ascii_start(s), b"hello");
+
+        let s = b" \t \nhello\n";
+        assert_eq!(trim_ascii_start(s), b"hello\n");
     }
 }

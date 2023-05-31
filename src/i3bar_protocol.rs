@@ -1,7 +1,7 @@
 use crate::color::Color;
 use crate::pointer_btn::PointerBtn;
 use crate::text::Align;
-use crate::utils::{de_first_json, de_last_json, last_line};
+use crate::utils::{de_first_json, de_last_json, last_line, trim_ascii_start};
 use serde::Deserialize;
 use serde::Serialize;
 use std::io::{Error, ErrorKind, Result};
@@ -82,12 +82,14 @@ pub struct JsonHeader {
 pub enum Protocol {
     Unknown,
     PlainText {
-        line: Option<String>,
+        pending_line: Option<String>,
     },
-    JsonNotStarted(JsonHeader),
+    JsonNotStarted {
+        header: JsonHeader,
+    },
     Json {
         header: JsonHeader,
-        blocks: Option<Vec<Block>>,
+        pending_blocks: Option<Vec<Block>>,
     },
 }
 
@@ -97,7 +99,7 @@ impl Protocol {
         match self {
             Self::Unknown => match de_first_json::<JsonHeader>(bytes) {
                 Ok((Some(header), rem)) if header.version == 1 => {
-                    *self = Self::JsonNotStarted(header);
+                    *self = Self::JsonNotStarted { header };
                     self.process_new_bytes(rem)
                 }
                 Ok((Some(header), _)) => Err(Error::new(
@@ -105,39 +107,35 @@ impl Protocol {
                     format!("Protocol version {} is not supported", header.version),
                 )),
                 _ => {
-                    *self = Self::PlainText { line: None };
+                    *self = Self::PlainText { pending_line: None };
                     self.process_new_bytes(bytes)
                 }
             },
-            Self::PlainText { line } => {
-                if let Some((new_line, rem)) = last_line(bytes) {
-                    *line = Some(String::from_utf8_lossy(new_line).into());
+            Self::PlainText { pending_line } => match last_line(bytes) {
+                Some((new_line, rem)) => {
+                    *pending_line = Some(String::from_utf8_lossy(new_line).into());
                     Ok(rem)
-                } else {
-                    Ok(bytes)
                 }
-            }
-            Self::JsonNotStarted(header) => {
-                let mut bytes = bytes;
-                while bytes.first().map_or(false, |&x| x == b' ' || x == b'\n') {
-                    bytes = &bytes[1..];
+                None => Ok(bytes),
+            },
+            Self::JsonNotStarted { header } => match trim_ascii_start(bytes) {
+                [] => Ok(&[]),
+                [b'[', rem @ ..] => {
+                    *self = Self::Json {
+                        header: *header,
+                        pending_blocks: None,
+                    };
+                    self.process_new_bytes(rem)
                 }
-                match bytes.first() {
-                    Some(b'[') => {
-                        *self = Self::Json {
-                            header: *header,
-                            blocks: None,
-                        };
-                        self.process_new_bytes(&bytes[1..])
-                    }
-                    Some(other) => Err(Error::new(
-                        ErrorKind::InvalidData,
-                        format!("invalid json: expected '[', got '{}'", *other as char),
-                    )),
-                    _ => Ok(bytes),
-                }
-            }
-            Self::Json { header: _, blocks } => match de_last_json(bytes) {
+                [other, ..] => Err(Error::new(
+                    ErrorKind::InvalidData,
+                    format!("invalid json: expected '[', got '{}'", *other as char),
+                )),
+            },
+            Self::Json {
+                pending_blocks: blocks,
+                ..
+            } => match de_last_json(bytes) {
                 Err(e) => Err(Error::new(
                     ErrorKind::InvalidData,
                     format!("invalid json: {e}"),
@@ -154,20 +152,18 @@ impl Protocol {
 
     pub fn get_blocks(&mut self) -> Option<Vec<Block>> {
         match self {
-            Self::Unknown => None,
-            Self::PlainText { line, .. } => Some(vec![Block {
-                full_text: line.take()?,
+            Self::Unknown | Self::JsonNotStarted { .. } => None,
+            Self::PlainText { pending_line, .. } => Some(vec![Block {
+                full_text: pending_line.take()?,
                 ..Default::default()
             }]),
-            Self::JsonNotStarted(_) => None,
-            Self::Json { blocks, .. } => blocks.take(),
+            Self::Json { pending_blocks, .. } => pending_blocks.take(),
         }
     }
 
     pub fn supports_clicks(&self) -> bool {
         match self {
-            Self::JsonNotStarted(h) => h.click_events,
-            Self::Json { header, .. } => header.click_events,
+            Self::JsonNotStarted { header } | Self::Json { header, .. } => header.click_events,
             _ => false,
         }
     }
