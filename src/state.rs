@@ -14,7 +14,7 @@ use wayrs_utils::shm_alloc::ShmAlloc;
 
 use crate::{
     bar::Bar, config::Config, i3bar_protocol::Block, pointer_btn::PointerBtn,
-    shared_state::SharedState, status_cmd::StatusCmd, wm_info_provider,
+    shared_state::SharedState, status_cmd::StatusCmd,
 };
 
 pub struct State {
@@ -85,7 +85,7 @@ impl State {
                 config,
                 status_cmd,
                 blocks_cache: BlocksCache::default(),
-                wm_info_provider: wm_info_provider::bind_wayland(conn, globals, wm_info_cb),
+                wm_info_provider: WmInfoProvider::bind(conn, globals, wm_info_cb),
             },
 
             cursor_theme,
@@ -139,9 +139,7 @@ impl State {
             .bind_with_cb(conn, 2..=4, wl_output_cb)
             .expect("could not bind wl_output");
 
-        if let Some(wm_info_provider) = &mut self.shared_state.wm_info_provider {
-            wm_info_provider.new_outut(conn, output);
-        }
+        self.shared_state.wm_info_provider.new_ouput(conn, output);
 
         let surface = self.wl_compositor.create_surface(conn);
 
@@ -190,9 +188,9 @@ impl State {
         let bar = self.bars.swap_remove(bar_index);
         bar.surface.destroy(conn);
         bar.layer_surface.destroy(conn);
-        if let Some(wm_info_provider) = &mut self.shared_state.wm_info_provider {
-            wm_info_provider.output_removed(conn, bar.output);
-        }
+        self.shared_state
+            .wm_info_provider
+            .output_removed(conn, bar.output);
         if bar.output.version() >= 3 {
             bar.output.release(conn);
         }

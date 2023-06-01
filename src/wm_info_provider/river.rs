@@ -1,14 +1,13 @@
-use std::any::Any;
 use std::ffi::CString;
 
 use wayrs_client::connection::Connection;
-use wayrs_client::global::*;
+use wayrs_client::{cstr, global::*};
 
 use super::*;
 use crate::protocol::*;
 use crate::state::State;
 
-pub(super) struct RiverInfoProvider {
+pub struct RiverInfoProvider {
     status_manager: ZriverStatusManagerV1,
     control: ZriverControlV1,
     output_statuses: Vec<OutputStatus>,
@@ -25,7 +24,7 @@ struct OutputStatus {
 }
 
 impl RiverInfoProvider {
-    pub(super) fn bind(
+    pub fn bind(
         conn: &mut Connection<State>,
         globals: &Globals,
         callback: WmInfoCallback,
@@ -39,12 +38,8 @@ impl RiverInfoProvider {
     }
 }
 
-impl WmInfoProvider for RiverInfoProvider {
-    fn as_any(&mut self) -> &mut dyn Any {
-        self
-    }
-
-    fn new_outut(&mut self, conn: &mut Connection<State>, output: WlOutput) {
+impl RiverInfoProvider {
+    pub fn new_output(&mut self, conn: &mut Connection<State>, output: WlOutput) {
         let status =
             self.status_manager
                 .get_river_output_status_with_cb(conn, output, output_status_cb);
@@ -58,7 +53,7 @@ impl WmInfoProvider for RiverInfoProvider {
         });
     }
 
-    fn output_removed(&mut self, conn: &mut Connection<State>, output: WlOutput) {
+    pub fn output_removed(&mut self, conn: &mut Connection<State>, output: WlOutput) {
         let index = self
             .output_statuses
             .iter()
@@ -68,32 +63,21 @@ impl WmInfoProvider for RiverInfoProvider {
         output_status.status.destroy(conn);
     }
 
-    fn left_click_on_tag(
+    pub fn click_on_tag(
         &mut self,
         conn: &mut Connection<State>,
         _: WlOutput,
         seat: WlSeat,
         tag: &str,
+        btn: PointerBtn,
     ) {
         let tag: u32 = tag.parse().unwrap();
-        self.control
-            .add_argument(conn, CString::new("set-focused-tags").unwrap());
-        self.control
-            .add_argument(conn, CString::new((1u32 << (tag - 1)).to_string()).unwrap());
-        self.control
-            .run_command_with_cb(conn, seat, river_command_cb);
-    }
-
-    fn right_click_on_tag(
-        &mut self,
-        conn: &mut Connection<State>,
-        _: WlOutput,
-        seat: WlSeat,
-        tag: &str,
-    ) {
-        let tag: u32 = tag.parse().unwrap();
-        self.control
-            .add_argument(conn, CString::new("toggle-focused-tags").unwrap());
+        let cmd = match btn {
+            PointerBtn::Left => cstr!("set-focused-tags"),
+            PointerBtn::Right => cstr!("toggle-focused-tags"),
+            _ => return,
+        };
+        self.control.add_argument(conn, cmd.to_owned());
         self.control
             .add_argument(conn, CString::new((1u32 << (tag - 1)).to_string()).unwrap());
         self.control
@@ -107,14 +91,7 @@ fn output_status_cb(
     output_status: ZriverOutputStatusV1,
     event: zriver_output_status_v1::Event,
 ) {
-    let river: &mut RiverInfoProvider = state
-        .shared_state
-        .wm_info_provider
-        .as_mut()
-        .unwrap()
-        .as_any()
-        .downcast_mut()
-        .unwrap();
+    let WmInfoProvider::River(river) = &mut state.shared_state.wm_info_provider else { unreachable!() };
 
     let status = river
         .output_statuses

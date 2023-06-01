@@ -1,4 +1,4 @@
-use std::io::Write;
+use std::io::{BufWriter, Write};
 use std::os::fd::{AsRawFd, RawFd};
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 
@@ -13,7 +13,7 @@ use crate::i3bar_protocol::{Block, Event, Protocol};
 pub struct StatusCmd {
     pub child: Child,
     pub output: ChildStdout,
-    input: ChildStdin,
+    input: BufWriter<ChildStdin>,
     protocol: Protocol,
     buf: Vec<u8>,
 }
@@ -26,7 +26,7 @@ impl StatusCmd {
             .stdout(Stdio::piped())
             .spawn()?;
         let output = child.stdout.take().unwrap();
-        let input = child.stdin.take().unwrap();
+        let input = BufWriter::new(child.stdin.take().unwrap());
         nix::fcntl::fcntl(
             output.as_raw_fd(),
             nix::fcntl::F_SETFL(nix::fcntl::OFlag::O_NONBLOCK),
@@ -57,7 +57,9 @@ impl StatusCmd {
 
     pub fn send_click_event(&mut self, event: &Event) -> Result<()> {
         if self.protocol.supports_clicks() {
-            writeln!(self.input, "{}", serde_json::to_string(event)?)?;
+            serde_json::to_writer(&mut self.input, event)?;
+            self.input.write_all(b"\n")?;
+            self.input.flush()?;
         }
         Ok(())
     }

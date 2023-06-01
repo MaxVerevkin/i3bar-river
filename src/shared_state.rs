@@ -10,5 +10,5 @@ pub struct SharedState {
     pub config: Config,
     pub status_cmd: Option<StatusCmd>,
     pub blocks_cache: BlocksCache,
-    pub wm_info_provider: Option<Box<dyn WmInfoProvider>>,
+    pub wm_info_provider: WmInfoProvider,
 }
