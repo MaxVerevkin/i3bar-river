@@ -4,7 +4,6 @@ use wayrs_client::connection::Connection;
 use wayrs_client::{cstr, global::*};
 
 use super::*;
-use crate::protocol::*;
 use crate::state::State;
 
 pub struct RiverInfoProvider {

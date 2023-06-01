@@ -106,7 +106,8 @@ impl ComputedText {
                 context,
                 0.0,
                 0.0,
-                self.width + options.overlap,
+                // HACK: this `+ 0.5` fixes some artifacts of fractional scaling
+                self.width + options.overlap + 0.5,
                 options.bar_height,
                 options.r_left,
                 options.r_right,

@@ -10,7 +10,7 @@ const BTN_FORWARD: u32 = 0x115;
 const BTN_BACK: u32 = 0x116;
 // const BTN_TASK: u32 = 0x117;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PointerBtn {
     Left,
     Middle,
