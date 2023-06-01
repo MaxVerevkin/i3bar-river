@@ -8,6 +8,7 @@ use crate::protocol::*;
 use crate::state::State;
 
 pub struct ExtWorkspaceUnstable {
+    manager: ZextWorkspaceManagerV1,
     groups: Vec<Group>,
     known_outputs: Vec<WlOutput>,
     callback: WmInfoCallback,
@@ -34,8 +35,8 @@ impl ExtWorkspaceUnstable {
         globals: &Globals,
         callback: WmInfoCallback,
     ) -> Option<Self> {
-        let _: ZextWorkspaceManagerV1 = globals.bind_with_cb(conn, 1..=1, manager_cb).ok()?;
         Some(Self {
+            manager: globals.bind_with_cb(conn, 1..=1, manager_cb).ok()?,
             groups: Vec::new(),
             known_outputs: Vec::new(),
             callback,
@@ -74,6 +75,7 @@ impl ExtWorkspaceUnstable {
         else { return };
 
         ws.workspace_handle.activate(conn);
+        self.manager.commit(conn);
     }
 }
 
