@@ -8,6 +8,9 @@ edition = "2021"
 license = "GPL-3.0-only"
 authors = ["MaxVerevkin <maxxverrr@gmail.com>"]
 
+[features]
+hyprland = []
+
 [dependencies]
 anyhow = "1"
 toml = { version = "0.7", default-features = false, features = ["parse"] }

@@ -1,18 +1,22 @@
-mod ext_workspace_unstable;
-mod river;
-
 use wayrs_client::connection::Connection;
 use wayrs_client::global::*;
 
 use crate::pointer_btn::PointerBtn;
 use crate::protocol::*;
 use crate::state::State;
+
+#[cfg(feature = "hyprland")]
+mod ext_workspace_unstable;
+#[cfg(feature = "hyprland")]
 use ext_workspace_unstable::*;
+
+mod river;
 use river::*;
 
 pub enum WmInfoProvider {
     None,
     River(RiverInfoProvider),
+    #[cfg(feature = "hyprland")]
     Ewu(ExtWorkspaceUnstable),
 }
 
@@ -25,18 +29,22 @@ impl WmInfoProvider {
         callback: WmInfoCallback,
     ) -> WmInfoProvider {
         if let Some(river) = RiverInfoProvider::bind(conn, globals, callback) {
-            Self::River(river)
-        } else if let Some(ext_wp_u) = ExtWorkspaceUnstable::bind(conn, globals, callback) {
-            Self::Ewu(ext_wp_u)
-        } else {
-            Self::None
+            return Self::River(river);
         }
+
+        #[cfg(feature = "hyprland")]
+        if let Some(ext_wp_u) = ExtWorkspaceUnstable::bind(conn, globals, callback) {
+            return Self::Ewu(ext_wp_u);
+        }
+
+        Self::None
     }
 
     pub fn new_ouput(&mut self, conn: &mut Connection<State>, output: WlOutput) {
         match self {
             Self::None => (),
             Self::River(x) => x.new_output(conn, output),
+            #[cfg(feature = "hyprland")]
             Self::Ewu(x) => x.new_ouput(conn, output),
         }
     }
@@ -45,6 +53,7 @@ impl WmInfoProvider {
         match self {
             Self::None => (),
             Self::River(x) => x.output_removed(conn, output),
+            #[cfg(feature = "hyprland")]
             Self::Ewu(x) => x.output_removed(conn, output),
         }
     }
@@ -60,6 +69,7 @@ impl WmInfoProvider {
         match self {
             Self::None => (),
             Self::River(x) => x.click_on_tag(conn, output, seat, tag, btn),
+            #[cfg(feature = "hyprland")]
             Self::Ewu(x) => x.click_on_tag(conn, output, seat, tag, btn),
         }
     }

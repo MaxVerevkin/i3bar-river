@@ -4,7 +4,6 @@ use wayrs_client::object::ObjectId;
 use wayrs_client::proxy::Proxy;
 
 use super::*;
-use crate::protocol::*;
 use crate::state::State;
 
 pub struct ExtWorkspaceUnstable {
