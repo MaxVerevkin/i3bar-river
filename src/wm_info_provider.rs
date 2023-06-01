@@ -13,7 +13,7 @@ use river::*;
 pub enum WmInfoProvider {
     None,
     River(RiverInfoProvider),
-    EWU(ExtWorkspaceUnstable),
+    Ewu(ExtWorkspaceUnstable),
 }
 
 pub type WmInfoCallback = fn(&mut Connection<State>, &mut State, WlOutput, WmInfo);
@@ -27,7 +27,7 @@ impl WmInfoProvider {
         if let Some(river) = RiverInfoProvider::bind(conn, globals, callback) {
             Self::River(river)
         } else if let Some(ext_wp_u) = ExtWorkspaceUnstable::bind(conn, globals, callback) {
-            Self::EWU(ext_wp_u)
+            Self::Ewu(ext_wp_u)
         } else {
             Self::None
         }
@@ -37,7 +37,7 @@ impl WmInfoProvider {
         match self {
             Self::None => (),
             Self::River(x) => x.new_output(conn, output),
-            Self::EWU(x) => x.new_ouput(conn, output),
+            Self::Ewu(x) => x.new_ouput(conn, output),
         }
     }
 
@@ -45,7 +45,7 @@ impl WmInfoProvider {
         match self {
             Self::None => (),
             Self::River(x) => x.output_removed(conn, output),
-            Self::EWU(x) => x.output_removed(conn, output),
+            Self::Ewu(x) => x.output_removed(conn, output),
         }
     }
 
@@ -60,7 +60,7 @@ impl WmInfoProvider {
         match self {
             Self::None => (),
             Self::River(x) => x.click_on_tag(conn, output, seat, tag, btn),
-            Self::EWU(x) => x.click_on_tag(conn, output, seat, tag, btn),
+            Self::Ewu(x) => x.click_on_tag(conn, output, seat, tag, btn),
         }
     }
 }
