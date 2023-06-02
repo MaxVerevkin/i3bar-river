@@ -345,7 +345,7 @@ fn wl_pointer_cb(
                     .unwrap();
                 }
 
-                if scroll.is_finder && state.shared_state.config.invert_touchpad_scrolling {
+                if scroll.is_finger && state.shared_state.config.invert_touchpad_scrolling {
                     pointer.pending_scroll -= scroll.absolute;
                 } else {
                     pointer.pending_scroll += scroll.absolute;
@@ -413,7 +413,7 @@ fn wl_pointer_cb(
             }
         }
         Event::AxisSource(source) => {
-            pointer.scroll_frame.is_finder = source == wl_pointer::AxisSource::Finger;
+            pointer.scroll_frame.is_finger = source == wl_pointer::AxisSource::Finger;
         }
         Event::AxisStop(args) => {
             if args.axis == wl_pointer::Axis::VerticalScroll {
@@ -452,7 +452,7 @@ fn wm_info_cb(conn: &mut Connection<State>, state: &mut State, output: WlOutput,
 pub struct ScrollFrame {
     stop: bool,
     absolute: f64,
-    is_finder: bool,
+    is_finger: bool,
 }
 
 impl ScrollFrame {
