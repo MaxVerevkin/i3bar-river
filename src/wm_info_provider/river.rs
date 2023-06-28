@@ -91,6 +91,7 @@ fn output_status_cb(
     event: zriver_output_status_v1::Event,
 ) {
     let WmInfoProvider::River(river) = &mut state.shared_state.wm_info_provider else { unreachable!() };
+    let max_tag = state.shared_state.config.wm.river.max_tag.min(32);
 
     let status = river
         .output_statuses
@@ -114,7 +115,7 @@ fn output_status_cb(
 
     let info = WmInfo {
         layout_name: status.layout_name.clone(),
-        tags: (1..10)
+        tags: (1..=max_tag)
             .map(|tag| Tag {
                 name: tag.to_string(),
                 is_focused: status.focused_tags & (1 << (tag - 1)) != 0,

@@ -11,6 +11,8 @@ use std::{env, fmt};
 #[derive(Deserialize, Debug)]
 #[serde(deny_unknown_fields, default)]
 pub struct Config {
+    // command
+    pub command: Option<String>,
     // colors
     pub background: Color,
     pub color: Color,
@@ -35,18 +37,20 @@ pub struct Config {
     pub tags_padding: f64,
     pub blocks_r: f64,
     pub blocks_overlap: f64,
-    // command
-    pub command: Option<String>,
     // misc
     pub position: Position,
     pub hide_inactive_tags: bool,
     pub invert_touchpad_scrolling: bool,
     pub show_layout_name: bool,
+    // wm-specific
+    pub wm: WmConfig,
 }
 
 impl Default for Config {
     fn default() -> Self {
         Self {
+            command: None,
+
             // A kind of gruvbox theme
             background: Color::from_rgba_hex(0x282828ff),
             color: Color::from_rgba_hex(0xffffffff),
@@ -59,6 +63,7 @@ impl Default for Config {
             tag_urgent_bg: Color::from_rgba_hex(0xcc241dff),
             tag_inactive_fg: Color::from_rgba_hex(0xd79921ff),
             tag_inactive_bg: Color::from_rgba_hex(0x282828ff),
+
             font: Font::new("monospace 10"),
             height: 24,
             margin_top: 0,
@@ -70,11 +75,15 @@ impl Default for Config {
             tags_padding: 25.0,
             blocks_r: 0.0,
             blocks_overlap: 0.0,
-            command: None,
+
             position: Position::Top,
             hide_inactive_tags: true,
             invert_touchpad_scrolling: true,
             show_layout_name: true,
+
+            wm: WmConfig {
+                river: RiverConfig { max_tag: 9 },
+            },
         }
     }
 }
@@ -123,6 +132,16 @@ impl From<Position> for zwlr_layer_surface_v1::Anchor {
             Position::Bottom => Self::Bottom | Self::Left | Self::Right,
         }
     }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct WmConfig {
+    pub river: RiverConfig,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct RiverConfig {
+    pub max_tag: u8,
 }
 
 #[derive(Debug)]

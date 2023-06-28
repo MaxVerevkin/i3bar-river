@@ -46,36 +46,48 @@ riverctl spawn i3bar-river
 
 The configuration file should be stored in `$XDG_CONFIG_HOME/i3bar-river/config.toml` or `~/.config/i3bar-river/config.toml`.
 
-Example configuration (every parameter is optional):
+The default configuration (every parameter is optional):
 
 ```toml
-background = "#282828"
-color = "#ffffff"
-separator = "#9a8a62"
-tag_fg = "#d79921"
-tag_bg = "#282828"
-tag_focused_fg = "#1d2021"
-tag_focused_bg = "#689d68"
-tag_urgent_fg = "#282828"
-tag_urgent_bg = "#cc241d"
-tag_inactive_fg = "#d79921"
-tag_inactive_bg = "#282828"
-font = "JetBrainsMono Nerd Font 10"
-height = 20
+# The status generator command.
+# Optional: with no status generator the bar will display only tags and layout name.
+# command = "your command here"
+
+# Colors
+background = "0x282828ff"
+color = "0xffffffff"
+separator = "0x9a8a62ff"
+tag_fg = "0xd79921ff"
+tag_bg = "0x282828ff"
+tag_focused_fg = "0x1d2021ff"
+tag_focused_bg = "0x689d68ff"
+tag_urgent_fg = "0x282828ff"
+tag_urgent_bg = "0xcc241dff"
+tag_inactive_fg = "0xd79921ff"
+tag_inactive_bg = "0x282828ff"
+
+# The font and various sizes
+font = "monospace 10"
+height = 24
 margin_top = 0
 margin_bottom = 0
 margin_left = 0
 margin_right = 0
-separator_width = 0
-tags_r = 6
-tags_padding = 25
-blocks_r = 6
-blocks_overlap = 0
-command = "i3status-rs"
-position = "top"
+separator_width = 2.0
+tags_r = 0.0
+tags_padding = 25.0
+blocks_r = 0.0
+blocks_overlap = 0.0
+
+# Misc
+position = "top" # either "top" or "bottom"
 hide_inactive_tags = true
 invert_touchpad_scrolling = true
-show_layout_name = false
+show_layout_name = true
+
+# WM-specific options
+[wm.river]
+max_tag = 9 # Show only the first nine tags
 ```
 
 ## How progressive short mode and rounded corners work
