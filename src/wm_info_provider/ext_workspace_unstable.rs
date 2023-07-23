@@ -71,7 +71,9 @@ impl ExtWorkspaceUnstable {
             .groups
             .iter()
             .find_map(|g| g.workspaces.iter().find(|w| w.name.as_deref() == Some(tag)))
-        else { return };
+        else {
+            return;
+        };
 
         ws.workspace_handle.activate(conn);
         self.manager.commit(conn);
@@ -84,7 +86,9 @@ fn manager_cb(
     _: ZextWorkspaceManagerV1,
     event: zext_workspace_manager_v1::Event,
 ) {
-    let WmInfoProvider::Ewu(state) = &mut s.shared_state.wm_info_provider else { unreachable!() };
+    let WmInfoProvider::Ewu(state) = &mut s.shared_state.wm_info_provider else {
+        unreachable!()
+    };
 
     match event {
         zext_workspace_manager_v1::Event::WorkspaceGroup(group_handle) => {
@@ -140,7 +144,9 @@ fn group_cb(
     group_handle: ZextWorkspaceGroupHandleV1,
     event: zext_workspace_group_handle_v1::Event,
 ) {
-    let WmInfoProvider::Ewu(state) = &mut state.shared_state.wm_info_provider else { unreachable!() };
+    let WmInfoProvider::Ewu(state) = &mut state.shared_state.wm_info_provider else {
+        unreachable!()
+    };
     let group = state
         .groups
         .iter_mut()
@@ -173,7 +179,9 @@ fn workspace_cb(
     workspace_handle: ZextWorkspaceHandleV1,
     event: zext_workspace_handle_v1::Event,
 ) {
-    let WmInfoProvider::Ewu(state) = &mut state.shared_state.wm_info_provider else { unreachable!() };
+    let WmInfoProvider::Ewu(state) = &mut state.shared_state.wm_info_provider else {
+        unreachable!()
+    };
     let group = state
         .groups
         .iter_mut()

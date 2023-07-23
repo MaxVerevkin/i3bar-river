@@ -430,7 +430,9 @@ fn fractional_scale_cb(
     fractional_scale: WpFractionalScaleV1,
     event: wp_fractional_scale_v1::Event,
 ) {
-    let wp_fractional_scale_v1::Event::PreferredScale(scale120) = event else { return };
+    let wp_fractional_scale_v1::Event::PreferredScale(scale120) = event else {
+        return;
+    };
     let bar = state
         .bars
         .iter_mut()

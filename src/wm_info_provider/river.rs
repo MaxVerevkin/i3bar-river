@@ -90,7 +90,9 @@ fn output_status_cb(
     output_status: ZriverOutputStatusV1,
     event: zriver_output_status_v1::Event,
 ) {
-    let WmInfoProvider::River(river) = &mut state.shared_state.wm_info_provider else { unreachable!() };
+    let WmInfoProvider::River(river) = &mut state.shared_state.wm_info_provider else {
+        unreachable!()
+    };
     let max_tag = state.shared_state.config.wm.river.max_tag.min(32);
 
     let status = river
