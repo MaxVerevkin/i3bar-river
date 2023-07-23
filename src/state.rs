@@ -3,11 +3,11 @@ use crate::protocol::*;
 use crate::wm_info_provider::*;
 
 use std::fmt::Display;
-use std::os::fd::{AsRawFd, RawFd};
+use std::os::unix::io::{AsRawFd, RawFd};
 
-use wayrs_client::connection::Connection;
 use wayrs_client::global::{Global, GlobalExt, Globals, GlobalsExt};
 use wayrs_client::proxy::Proxy;
+use wayrs_client::Connection;
 use wayrs_utils::cursor::{CursorImage, CursorShape, CursorTheme, ThemedPointer};
 use wayrs_utils::seats::{SeatHandler, Seats};
 use wayrs_utils::shm_alloc::ShmAlloc;

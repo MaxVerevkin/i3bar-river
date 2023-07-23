@@ -1,5 +1,5 @@
 use std::io::{BufWriter, Write};
-use std::os::fd::{AsRawFd, RawFd};
+use std::os::unix::io::{AsRawFd, RawFd};
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 
 use anyhow::Result;

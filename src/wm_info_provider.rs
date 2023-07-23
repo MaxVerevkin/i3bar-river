@@ -1,5 +1,5 @@
-use wayrs_client::connection::Connection;
 use wayrs_client::global::*;
+use wayrs_client::Connection;
 
 use crate::pointer_btn::PointerBtn;
 use crate::protocol::*;

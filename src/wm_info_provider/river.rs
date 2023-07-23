@@ -1,7 +1,7 @@
 use std::ffi::CString;
 
-use wayrs_client::connection::Connection;
-use wayrs_client::{cstr, global::*};
+use wayrs_client::global::*;
+use wayrs_client::{cstr, Connection};
 
 use super::*;
 use crate::state::State;

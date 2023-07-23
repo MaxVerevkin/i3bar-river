@@ -1,6 +1,6 @@
 use pangocairo::cairo;
 
-use wayrs_client::connection::Connection;
+use wayrs_client::Connection;
 use wayrs_utils::shm_alloc::BufferSpec;
 
 use crate::blocks_cache::ComputedBlock;

@@ -18,10 +18,10 @@ mod wm_info_provider;
 
 use signal_hook::consts::*;
 
-use std::{io::ErrorKind, os::fd::AsRawFd};
+use std::io::ErrorKind;
+use std::os::unix::io::AsRawFd;
 
-use wayrs_client::connection::Connection;
-use wayrs_client::IoMode;
+use wayrs_client::{Connection, IoMode};
 
 use nix::{
     errno::Errno,
@@ -35,8 +35,7 @@ fn main() -> anyhow::Result<()> {
     let (sig_read, sig_write) = nix::unistd::pipe2(OFlag::O_NONBLOCK | OFlag::O_CLOEXEC)?;
     signal_hook::low_level::pipe::register(SIGUSR1, sig_write)?;
 
-    let mut conn = Connection::connect()?;
-    let globals = conn.blocking_collect_initial_globals()?;
+    let (mut conn, globals) = Connection::connect_and_collect_globals()?;
     let mut state = State::new(&mut conn, &globals);
     conn.flush(IoMode::Blocking)?;
 

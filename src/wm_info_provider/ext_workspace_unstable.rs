@@ -1,7 +1,7 @@
-use wayrs_client::connection::Connection;
 use wayrs_client::global::*;
 use wayrs_client::object::ObjectId;
 use wayrs_client::proxy::Proxy;
+use wayrs_client::Connection;
 
 use super::*;
 use crate::state::State;
