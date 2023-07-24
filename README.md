@@ -54,17 +54,17 @@ The default configuration (every parameter is optional):
 # command = "your command here"
 
 # Colors
-background = "0x282828ff"
-color = "0xffffffff"
-separator = "0x9a8a62ff"
-tag_fg = "0xd79921ff"
-tag_bg = "0x282828ff"
-tag_focused_fg = "0x1d2021ff"
-tag_focused_bg = "0x689d68ff"
-tag_urgent_fg = "0x282828ff"
-tag_urgent_bg = "0xcc241dff"
-tag_inactive_fg = "0xd79921ff"
-tag_inactive_bg = "0x282828ff"
+background = "#282828ff"
+color = "#ffffffff"
+separator = "#9a8a62ff"
+tag_fg = "#d79921ff"
+tag_bg = "#282828ff"
+tag_focused_fg = "#1d2021ff"
+tag_focused_bg = "#689d68ff"
+tag_urgent_fg = "#282828ff"
+tag_urgent_bg = "#cc241dff"
+tag_inactive_fg = "#d79921ff"
+tag_inactive_bg = "#282828ff"
 
 # The font and various sizes
 font = "monospace 10"
@@ -124,7 +124,7 @@ command = "i3status-rs"
 
 ```toml
 [theme]
-name = "native"
+theme = "native"
 [theme.overrides]
 idle_fg = "#ebdbb2"
 info_fg = "#458588"
@@ -149,7 +149,7 @@ command = "i3status-rs"
 
 ```toml
 [theme]
-name = "slick"
+theme = "slick"
 ```
 
 ### Rounded corners
@@ -171,7 +171,7 @@ command = "i3status-rs"
 
 ```toml
 [theme]
-name = "slick"
+theme = "slick"
 [theme.overrides]
 separator = "native"
 alternating_tint_bg = "none"
