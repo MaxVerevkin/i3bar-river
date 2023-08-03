@@ -8,6 +8,7 @@ use crate::button_manager::ButtonManager;
 use crate::color::Color;
 use crate::config::{Config, Position};
 use crate::i3bar_protocol;
+use crate::output::Output;
 use crate::pointer_btn::PointerBtn;
 use crate::protocol::*;
 use crate::shared_state::SharedState;
@@ -16,8 +17,7 @@ use crate::text::{self, ComputedText, RenderOptions};
 use crate::wm_info_provider::WmInfo;
 
 pub struct Bar {
-    pub output: WlOutput,
-    pub output_reg_name: u32,
+    pub output: Output,
     pub hidden: bool,
     pub mapped: bool,
     pub frame_cb: Option<WlCallback>,
@@ -61,7 +61,7 @@ impl Bar {
     ) -> anyhow::Result<()> {
         if let Some(tag) = self.tags_btns.click(x) {
             ss.wm_info_provider
-                .click_on_tag(conn, self.output, seat, tag, button);
+                .click_on_tag(conn, self.output.wl, seat, tag, button);
         } else if let Some((name, instance)) = self.blocks_btns.click(x) {
             if let Some(cmd) = &mut ss.status_cmd {
                 cmd.send_click_event(&i3bar_protocol::Event {

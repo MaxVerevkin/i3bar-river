@@ -1,11 +1,12 @@
 use crate::blocks_cache::BlocksCache;
+use crate::output::Output;
 use crate::protocol::*;
 use crate::wm_info_provider::*;
 
 use std::fmt::Display;
 use std::os::unix::io::{AsRawFd, RawFd};
 
-use wayrs_client::global::{Global, GlobalExt, Globals, GlobalsExt};
+use wayrs_client::global::{GlobalExt, Globals, GlobalsExt};
 use wayrs_client::proxy::Proxy;
 use wayrs_client::Connection;
 use wayrs_utils::cursor::{CursorImage, CursorShape, CursorTheme, ThemedPointer};
@@ -27,7 +28,7 @@ pub struct State {
     pointers: Vec<Pointer>,
 
     // Outputs that haven't yet advertised their names
-    pending_outputs: Vec<PendingOutput>,
+    pub pending_outputs: Vec<Output>,
 
     pub hidden: bool,
     pub bars: Vec<Bar>,
@@ -48,12 +49,6 @@ struct Pointer {
     pending_button: Option<PointerBtn>,
     pending_scroll: f64,
     scroll_frame: ScrollFrame,
-}
-
-struct PendingOutput {
-    wl: WlOutput,
-    reg_name: u32,
-    scale: u32,
 }
 
 impl State {
@@ -86,7 +81,11 @@ impl State {
             seats: Seats::bind(conn, globals),
             pointers: Vec::new(),
 
-            pending_outputs: Vec::new(),
+            pending_outputs: globals
+                .iter()
+                .filter(|g| g.is::<WlOutput>())
+                .map(|g| Output::bind(conn, g))
+                .collect(),
 
             hidden: false,
             bars: Vec::new(),
@@ -102,11 +101,6 @@ impl State {
             cursor_theme,
             default_cursor,
         };
-
-        globals
-            .iter()
-            .filter(|g| g.is::<WlOutput>())
-            .for_each(|g| this.bind_output(conn, g));
 
         if let Err(e) = error {
             this.set_error(conn, e.to_string());
@@ -145,17 +139,7 @@ impl State {
             .map(|cmd| cmd.output.as_raw_fd())
     }
 
-    fn bind_output(&mut self, conn: &mut Connection<Self>, global: &Global) {
-        self.pending_outputs.push(PendingOutput {
-            wl: global
-                .bind_with_cb(conn, 2..=4, wl_output_cb)
-                .expect("could not bind wl_output"),
-            reg_name: global.name,
-            scale: 1,
-        });
-    }
-
-    fn register_output(&mut self, conn: &mut Connection<Self>, output: PendingOutput, name: &str) {
+    pub fn register_output(&mut self, conn: &mut Connection<Self>, output: Output, name: &str) {
         if !self.shared_state.config.output_enabled(name) {
             return;
         }
@@ -180,8 +164,7 @@ impl State {
         );
 
         let mut bar = Bar {
-            output: output.wl,
-            output_reg_name: output.reg_name,
+            output,
             hidden: self.hidden,
             mapped: false,
             frame_cb: None,
@@ -213,10 +196,8 @@ impl State {
         bar.layer_surface.destroy(conn);
         self.shared_state
             .wm_info_provider
-            .output_removed(conn, bar.output);
-        if bar.output.version() >= 3 {
-            bar.output.release(conn);
-        }
+            .output_removed(conn, bar.output.wl);
+        bar.output.destroy(conn);
     }
 
     pub fn toggle_visibility(&mut self, conn: &mut Connection<Self>) {
@@ -263,42 +244,15 @@ impl SeatHandler for State {
 fn wl_registry_cb(conn: &mut Connection<State>, state: &mut State, event: &wl_registry::Event) {
     match event {
         wl_registry::Event::Global(global) if global.is::<WlOutput>() => {
-            state.bind_output(conn, global);
+            state.pending_outputs.push(Output::bind(conn, global));
         }
         wl_registry::Event::GlobalRemove(name) => {
             if let Some(bar_index) = state
                 .bars
                 .iter()
-                .position(|bar| bar.output_reg_name == *name)
+                .position(|bar| bar.output.reg_name == *name)
             {
                 state.drop_bar(conn, bar_index);
-            }
-        }
-        _ => (),
-    }
-}
-
-fn wl_output_cb(
-    conn: &mut Connection<State>,
-    state: &mut State,
-    output: WlOutput,
-    event: wl_output::Event,
-) {
-    match event {
-        wl_output::Event::Name(name) => {
-            let i = state
-                .pending_outputs
-                .iter()
-                .position(|o| o.wl == output)
-                .unwrap();
-            let output = state.pending_outputs.swap_remove(i);
-            state.register_output(conn, output, name.to_str().expect("invalid output name"));
-        }
-        wl_output::Event::Scale(scale) => {
-            if let Some(bar) = state.bars.iter_mut().find(|bar| bar.output == output) {
-                bar.scale = scale as u32;
-            } else if let Some(output) = state.pending_outputs.iter_mut().find(|o| o.wl == output) {
-                output.scale = scale as u32;
             }
         }
         _ => (),
@@ -479,7 +433,11 @@ fn fractional_scale_cb(
 }
 
 fn wm_info_cb(conn: &mut Connection<State>, state: &mut State, output: WlOutput, info: WmInfo) {
-    let bar = state.bars.iter_mut().find(|b| b.output == output).unwrap();
+    let bar = state
+        .bars
+        .iter_mut()
+        .find(|b| b.output.wl == output)
+        .unwrap();
     bar.set_wm_info(info);
     bar.request_frame(conn);
 }
