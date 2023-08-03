@@ -88,6 +88,15 @@ show_layout_name = true
 # WM-specific options
 [wm.river]
 max_tag = 9 # Show only the first nine tags
+
+# Per output overrides
+# [output.your-output-name]
+# right now only "enable" option is available
+# enable = false
+#
+# You can have any number of overrides
+# [output.eDP-1]
+# enable = false
 ```
 
 ## How progressive short mode and rounded corners work

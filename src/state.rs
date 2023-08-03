@@ -26,6 +26,9 @@ pub struct State {
     seats: Seats,
     pointers: Vec<Pointer>,
 
+    // Outputs that haven't yet advertised their names
+    pending_outputs: Vec<PendingOutput>,
+
     pub hidden: bool,
     pub bars: Vec<Bar>,
 
@@ -45,6 +48,12 @@ struct Pointer {
     pending_button: Option<PointerBtn>,
     pending_scroll: f64,
     scroll_frame: ScrollFrame,
+}
+
+struct PendingOutput {
+    wl: WlOutput,
+    reg_name: u32,
+    scale: u32,
 }
 
 impl State {
@@ -76,6 +85,8 @@ impl State {
 
             seats: Seats::bind(conn, globals),
             pointers: Vec::new(),
+
+            pending_outputs: Vec::new(),
 
             hidden: false,
             bars: Vec::new(),
@@ -135,11 +146,23 @@ impl State {
     }
 
     fn bind_output(&mut self, conn: &mut Connection<Self>, global: &Global) {
-        let output = global
-            .bind_with_cb(conn, 2..=4, wl_output_cb)
-            .expect("could not bind wl_output");
+        self.pending_outputs.push(PendingOutput {
+            wl: global
+                .bind_with_cb(conn, 2..=4, wl_output_cb)
+                .expect("could not bind wl_output"),
+            reg_name: global.name,
+            scale: 1,
+        });
+    }
 
-        self.shared_state.wm_info_provider.new_ouput(conn, output);
+    fn register_output(&mut self, conn: &mut Connection<Self>, output: PendingOutput, name: &str) {
+        if !self.shared_state.config.output_enabled(name) {
+            return;
+        }
+
+        self.shared_state
+            .wm_info_provider
+            .new_ouput(conn, output.wl);
 
         let surface = self.wl_compositor.create_surface(conn);
 
@@ -150,15 +173,15 @@ impl State {
         let layer_surface = self.layer_shell.get_layer_surface_with_cb(
             conn,
             surface,
-            Some(output),
+            Some(output.wl),
             zwlr_layer_shell_v1::Layer::Top,
             wayrs_client::cstr!("i3bar-river").into(),
             layer_surface_cb,
         );
 
         let mut bar = Bar {
-            output,
-            output_reg_name: global.name,
+            output: output.wl,
+            output_reg_name: output.reg_name,
             hidden: self.hidden,
             mapped: false,
             frame_cb: None,
@@ -256,18 +279,29 @@ fn wl_registry_cb(conn: &mut Connection<State>, state: &mut State, event: &wl_re
 }
 
 fn wl_output_cb(
-    _: &mut Connection<State>,
+    conn: &mut Connection<State>,
     state: &mut State,
     output: WlOutput,
     event: wl_output::Event,
 ) {
-    if let wl_output::Event::Scale(scale) = event {
-        let bar = state
-            .bars
-            .iter_mut()
-            .find(|bar| bar.output == output)
-            .unwrap();
-        bar.scale = scale as u32;
+    match event {
+        wl_output::Event::Name(name) => {
+            let i = state
+                .pending_outputs
+                .iter()
+                .position(|o| o.wl == output)
+                .unwrap();
+            let output = state.pending_outputs.swap_remove(i);
+            state.register_output(conn, output, name.to_str().expect("invalid output name"));
+        }
+        wl_output::Event::Scale(scale) => {
+            if let Some(bar) = state.bars.iter_mut().find(|bar| bar.output == output) {
+                bar.scale = scale as u32;
+            } else if let Some(output) = state.pending_outputs.iter_mut().find(|o| o.wl == output) {
+                output.scale = scale as u32;
+            }
+        }
+        _ => (),
     }
 }
 

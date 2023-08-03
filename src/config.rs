@@ -3,6 +3,7 @@ use crate::protocol::zwlr_layer_surface_v1;
 use anyhow::{Context, Result};
 use pangocairo::pango::FontDescription;
 use serde::{de, Deserialize};
+use std::collections::HashMap;
 use std::fs::read_to_string;
 use std::ops::Deref;
 use std::path::PathBuf;
@@ -44,6 +45,8 @@ pub struct Config {
     pub show_layout_name: bool,
     // wm-specific
     pub wm: WmConfig,
+    // overrides
+    pub output: HashMap<String, OutputOverrides>,
 }
 
 impl Default for Config {
@@ -84,6 +87,8 @@ impl Default for Config {
             wm: WmConfig {
                 river: RiverConfig { max_tag: 9 },
             },
+
+            output: HashMap::new(),
         }
     }
 }
@@ -109,6 +114,13 @@ impl Config {
                 Self::default()
             }
         })
+    }
+
+    pub fn output_enabled(&self, output: &str) -> bool {
+        self.output
+            .get(output)
+            .and_then(|o| o.enable)
+            .unwrap_or(true)
     }
 }
 
@@ -142,6 +154,12 @@ pub struct WmConfig {
 #[derive(Debug, Deserialize)]
 pub struct RiverConfig {
     pub max_tag: u8,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct OutputOverrides {
+    #[serde(default)]
+    enable: Option<bool>,
 }
 
 #[derive(Debug)]
