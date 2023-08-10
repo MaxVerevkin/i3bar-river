@@ -23,7 +23,6 @@ pub struct Bar {
     pub frame_cb: Option<WlCallback>,
     pub width: u32,
     pub height: u32,
-    pub scale: u32,
     pub scale120: Option<u32>,
     pub surface: WlSurface,
     pub layer_surface: ZwlrLayerSurfaceV1,
@@ -86,9 +85,9 @@ impl Bar {
                 scale120 as f64 / 120.0,
             ),
             None => (
-                self.width * self.scale,
-                self.height * self.scale,
-                self.scale as f64,
+                self.width * self.output.scale,
+                self.height * self.output.scale,
+                self.output.scale as f64,
             ),
         };
 

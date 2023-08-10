@@ -170,7 +170,6 @@ impl State {
             frame_cb: None,
             width: 0,
             height: self.shared_state.config.height,
-            scale: 1,
             scale120: None,
             surface,
             viewport: self.viewporter.get_viewport(conn, surface),
@@ -380,7 +379,7 @@ fn wl_pointer_cb(
                     conn,
                     &mut state.shared_state.shm,
                     default_cursor,
-                    bar.scale,
+                    bar.output.scale,
                     args.serial,
                 );
             }

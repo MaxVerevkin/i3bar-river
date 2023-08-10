@@ -4,6 +4,7 @@ use wayrs_client::Connection;
 
 use crate::state::State;
 
+#[derive(Debug)]
 pub struct Output {
     pub wl: WlOutput,
     pub reg_name: u32,
@@ -44,7 +45,7 @@ fn wl_output_cb(
         }
         wl_output::Event::Scale(scale) => {
             if let Some(bar) = state.bars.iter_mut().find(|bar| bar.output.wl == output) {
-                bar.scale = scale as u32;
+                bar.output.scale = scale as u32;
             } else if let Some(output) = state.pending_outputs.iter_mut().find(|o| o.wl == output) {
                 output.scale = scale as u32;
             }
