@@ -24,9 +24,7 @@ Hyprland/wlr_ext_workspaces support is experimental and is behind `hyprland` fea
 
 ## Installation
 
-### Arch
-
-AUR: [i3bar-river-git](https://aur.archlinux.org/packages/i3bar-river-git)
+[![Packaging status](https://repology.org/badge/vertical-allrepos/i3bar-river.svg)](https://repology.org/project/i3bar-river/versions)
 
 ### From Source
 
