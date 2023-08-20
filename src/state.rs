@@ -65,15 +65,16 @@ impl State {
             .and_then(|cmd| StatusCmd::new(cmd).map_err(|e| error = Err(e)).ok());
 
         conn.add_registry_cb(wl_registry_cb);
+        let wl_compositor = globals.bind(conn, 4..=5).unwrap();
 
-        let cursor_theme = CursorTheme::new(conn, globals);
+        let cursor_theme = CursorTheme::new(conn, globals, wl_compositor);
         let default_cursor = cursor_theme
             .get_image(CursorShape::Default)
             .map_err(|e| error = Err(e.into()))
             .ok();
 
         let mut this = Self {
-            wl_compositor: globals.bind(conn, 4..=5).unwrap(),
+            wl_compositor,
             layer_shell: globals.bind(conn, 1..=4).unwrap(),
             viewporter: globals.bind(conn, 1..=1).unwrap(),
             fractional_scale_manager: globals.bind(conn, 1..=1).ok(),
