@@ -44,6 +44,7 @@ pub struct Config {
     pub invert_touchpad_scrolling: bool,
     pub show_layout_name: bool,
     pub blend: bool,
+    pub show_mode: bool,
     // wm-specific
     pub wm: WmConfig,
     // overrides
@@ -85,6 +86,7 @@ impl Default for Config {
             invert_touchpad_scrolling: true,
             show_layout_name: true,
             blend: true,
+            show_mode: true,
 
             wm: WmConfig {
                 river: RiverConfig { max_tag: 9 },
