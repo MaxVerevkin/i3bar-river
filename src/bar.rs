@@ -288,6 +288,9 @@ fn render_blocks(
     full_width: f64,
     full_height: f64,
 ) {
+    context.rectangle(offset_left, 0.0, full_width - offset_left, full_height);
+    context.clip();
+
     struct LogialBlock<'a> {
         blocks: Vec<&'a ComputedBlock>,
         delta: f64,
@@ -406,6 +409,8 @@ fn render_blocks(
             blocks_width -= w;
         }
     }
+
+    context.reset_clip();
 }
 
 pub fn compute_tag_label(label: &str, config: &Config) -> ComputedText {
