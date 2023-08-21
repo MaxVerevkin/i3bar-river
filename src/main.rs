@@ -17,27 +17,35 @@ mod text;
 mod utils;
 mod wm_info_provider;
 
-use signal_hook::consts::*;
-
 use std::io::ErrorKind;
 use std::os::unix::io::AsRawFd;
+use std::path::PathBuf;
 
+use clap::Parser;
+use nix::errno::Errno;
+use nix::fcntl::OFlag;
+use nix::poll::{poll, PollFd, PollFlags};
+use signal_hook::consts::*;
 use wayrs_client::{Connection, IoMode};
-
-use nix::{
-    errno::Errno,
-    fcntl::OFlag,
-    poll::{poll, PollFd, PollFlags},
-};
 
 use state::State;
 
+#[derive(Parser)]
+#[command(author, version, about, long_about = None)]
+struct Cli {
+    /// The path to a config file.
+    #[arg(short, long, value_name = "FILE")]
+    config: Option<PathBuf>,
+}
+
 fn main() -> anyhow::Result<()> {
+    let args = Cli::parse();
+
     let (sig_read, sig_write) = nix::unistd::pipe2(OFlag::O_NONBLOCK | OFlag::O_CLOEXEC)?;
     signal_hook::low_level::pipe::register(SIGUSR1, sig_write)?;
 
     let (mut conn, globals) = Connection::connect_and_collect_globals()?;
-    let mut state = State::new(&mut conn, &globals);
+    let mut state = State::new(&mut conn, &globals, args.config.as_deref());
     conn.flush(IoMode::Blocking)?;
 
     let mut fds = Vec::with_capacity(3);

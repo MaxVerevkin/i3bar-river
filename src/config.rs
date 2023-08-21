@@ -6,7 +6,7 @@ use serde::{de, Deserialize};
 use std::collections::HashMap;
 use std::fs::read_to_string;
 use std::ops::Deref;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::{env, fmt};
 
 #[derive(Deserialize, Debug)]
@@ -94,19 +94,21 @@ impl Default for Config {
 }
 
 impl Config {
-    pub fn new() -> Result<Self> {
-        Ok(match config_dir() {
-            Some(mut config_path) => {
-                config_path.push("i3bar-river");
-                config_path.push("config.toml");
-                if config_path.exists() {
-                    let config =
-                        read_to_string(config_path).context("Failed to read configuration")?;
-                    toml::from_str(&config).context("Failed to deserialize configuration")?
-                } else {
-                    eprintln!("Using default configuration");
-                    Self::default()
-                }
+    pub fn new(path: Option<&Path>) -> Result<Self> {
+        let buf;
+
+        let path = match path {
+            Some(path) => Some(path),
+            None => {
+                buf = config_path();
+                buf.as_deref()
+            }
+        };
+
+        Ok(match path {
+            Some(config_path) => {
+                let config = read_to_string(config_path).context("Failed to read configuration")?;
+                toml::from_str(&config).context("Failed to deserialize configuration")?
             }
             None => {
                 eprintln!("Could not find the configuration path");
@@ -128,6 +130,13 @@ fn config_dir() -> Option<PathBuf> {
     env::var_os("XDG_CONFIG_HOME")
         .map(PathBuf::from)
         .or_else(|| Some(PathBuf::from(env::var_os("HOME")?).join(".config")))
+}
+
+fn config_path() -> Option<PathBuf> {
+    let mut path = config_dir()?;
+    path.push("i3bar-river");
+    path.push("config.toml");
+    path.exists().then_some(path)
 }
 
 #[derive(Deserialize, Debug, Clone, Copy, PartialEq, Eq)]

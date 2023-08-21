@@ -5,6 +5,7 @@ use crate::wm_info_provider::*;
 
 use std::fmt::Display;
 use std::os::unix::io::{AsRawFd, RawFd};
+use std::path::Path;
 
 use wayrs_client::global::{GlobalExt, Globals, GlobalsExt};
 use wayrs_client::proxy::Proxy;
@@ -52,10 +53,10 @@ struct Pointer {
 }
 
 impl State {
-    pub fn new(conn: &mut Connection<Self>, globals: &Globals) -> Self {
+    pub fn new(conn: &mut Connection<Self>, globals: &Globals, config_path: Option<&Path>) -> Self {
         let mut error = Ok(());
 
-        let config = Config::new()
+        let config = Config::new(config_path)
             .map_err(|e| error = Err(e))
             .unwrap_or_default();
 
