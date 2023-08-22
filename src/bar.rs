@@ -118,12 +118,20 @@ impl Bar {
         let cairo_ctx = cairo::Context::new(&cairo_surf).expect("cairo context");
         cairo_ctx.scale(scale_f, scale_f);
 
+        if !ss.config.blend {
+            cairo_ctx.set_operator(cairo::Operator::Source);
+        }
+
         // Background
-        cairo_ctx.save().unwrap();
-        cairo_ctx.set_operator(cairo::Operator::Source);
+        if ss.config.blend {
+            cairo_ctx.save().unwrap();
+            cairo_ctx.set_operator(cairo::Operator::Source);
+        }
         ss.config.background.apply(&cairo_ctx);
         cairo_ctx.paint().unwrap();
-        cairo_ctx.restore().unwrap();
+        if ss.config.blend {
+            cairo_ctx.restore().unwrap();
+        }
 
         // Compute tags
         if self.tags_computed.is_empty() {

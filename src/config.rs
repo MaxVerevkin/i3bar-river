@@ -43,6 +43,7 @@ pub struct Config {
     pub hide_inactive_tags: bool,
     pub invert_touchpad_scrolling: bool,
     pub show_layout_name: bool,
+    pub blend: bool,
     // wm-specific
     pub wm: WmConfig,
     // overrides
@@ -83,6 +84,7 @@ impl Default for Config {
             hide_inactive_tags: true,
             invert_touchpad_scrolling: true,
             show_layout_name: true,
+            blend: true,
 
             wm: WmConfig {
                 river: RiverConfig { max_tag: 9 },
