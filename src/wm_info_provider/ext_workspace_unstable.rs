@@ -10,7 +10,6 @@ pub struct ExtWorkspaceUnstable {
     manager: ZextWorkspaceManagerV1,
     groups: Vec<Group>,
     known_outputs: Vec<WlOutput>,
-    callback: WmInfoCallback,
 }
 
 #[derive(Debug)]
@@ -29,37 +28,62 @@ struct Workspace {
 }
 
 impl ExtWorkspaceUnstable {
-    pub fn bind(
-        conn: &mut Connection<State>,
-        globals: &Globals,
-        callback: WmInfoCallback,
-    ) -> Option<Self> {
+    pub fn bind(conn: &mut Connection<State>, globals: &Globals) -> Option<Self> {
         Some(Self {
             manager: globals.bind_with_cb(conn, 1..=1, manager_cb).ok()?,
             groups: Vec::new(),
             known_outputs: Vec::new(),
-            callback,
         })
     }
 }
 
-impl ExtWorkspaceUnstable {
-    pub fn new_ouput(&mut self, _: &mut Connection<State>, output: WlOutput) {
+impl WmInfoProvider for ExtWorkspaceUnstable {
+    fn new_ouput(&mut self, _conn: &mut Connection<State>, output: WlOutput) {
         self.known_outputs.push(output);
     }
 
-    pub fn output_removed(&mut self, _: &mut Connection<State>, output: WlOutput) {
+    fn output_removed(&mut self, _conn: &mut Connection<State>, output: WlOutput) {
         self.known_outputs.retain(|&o| o != output);
         for group in &mut self.groups {
             group.outputs.retain(|&id| id != output.id());
         }
     }
 
-    pub fn click_on_tag(
+    fn get_tags(&self, output: WlOutput) -> Vec<Tag> {
+        let Some(group) = self
+            .groups
+            .iter()
+            .find(|g| g.outputs.contains(&output.id()))
+        else {
+            return Vec::new();
+        };
+
+        let mut tags: Vec<_> = group
+            .workspaces
+            .iter()
+            .flat_map(|w| {
+                let name = w.name.clone()?;
+                Some(Tag {
+                    name,
+                    is_focused: w.is_focused,
+                    is_active: true,
+                    is_urgent: w.is_urgent,
+                })
+            })
+            .collect();
+        tags.sort_unstable_by(|a, b| a.name.cmp(&b.name));
+        tags
+    }
+
+    fn get_layout_name(&self, _output: WlOutput) -> Option<String> {
+        None
+    }
+
+    fn click_on_tag(
         &mut self,
         conn: &mut Connection<State>,
-        _: WlOutput,
-        _: WlSeat,
+        _output: WlOutput,
+        _seat: WlSeat,
         tag: &str,
         btn: PointerBtn,
     ) {
@@ -78,62 +102,30 @@ impl ExtWorkspaceUnstable {
         ws.workspace_handle.activate(conn);
         self.manager.commit(conn);
     }
+
+    fn as_any(&mut self) -> &mut dyn Any {
+        self
+    }
 }
 
 fn manager_cb(
     conn: &mut Connection<State>,
-    s: &mut State,
+    state: &mut State,
     _: ZextWorkspaceManagerV1,
     event: zext_workspace_manager_v1::Event,
 ) {
-    let WmInfoProvider::Ewu(state) = &mut s.shared_state.wm_info_provider else {
-        unreachable!()
-    };
+    let ewu = state.shared_state.get_ewu().unwrap();
 
     match event {
         zext_workspace_manager_v1::Event::WorkspaceGroup(group_handle) => {
             conn.set_callback_for(group_handle, group_cb);
-            state.groups.push(Group {
+            ewu.groups.push(Group {
                 group_handle,
                 workspaces: Vec::new(),
                 outputs: Vec::new(),
             });
         }
-        zext_workspace_manager_v1::Event::Done => {
-            let mut events = Vec::new();
-            for &output in &state.known_outputs {
-                if let Some(group) = state
-                    .groups
-                    .iter()
-                    .find(|g| g.outputs.contains(&output.id()))
-                {
-                    let mut tags: Vec<_> = group
-                        .workspaces
-                        .iter()
-                        .flat_map(|w| {
-                            let name = w.name.clone()?;
-                            Some(Tag {
-                                name,
-                                is_focused: w.is_focused,
-                                is_active: true,
-                                is_urgent: w.is_urgent,
-                            })
-                        })
-                        .collect();
-                    tags.sort_unstable_by(|a, b| a.name.cmp(&b.name));
-                    events.push((output, tags));
-                }
-            }
-
-            let cb = state.callback;
-            for (output, tags) in events {
-                let info = WmInfo {
-                    layout_name: None,
-                    tags,
-                };
-                (cb)(conn, s, output, info);
-            }
-        }
+        zext_workspace_manager_v1::Event::Done => state.tags_updated(conn, None),
         zext_workspace_manager_v1::Event::Finished => unreachable!(),
     }
 }
@@ -144,10 +136,8 @@ fn group_cb(
     group_handle: ZextWorkspaceGroupHandleV1,
     event: zext_workspace_group_handle_v1::Event,
 ) {
-    let WmInfoProvider::Ewu(state) = &mut state.shared_state.wm_info_provider else {
-        unreachable!()
-    };
-    let group = state
+    let ewu = state.shared_state.get_ewu().unwrap();
+    let group = ewu
         .groups
         .iter_mut()
         .find(|g| g.group_handle == group_handle)
@@ -179,10 +169,8 @@ fn workspace_cb(
     workspace_handle: ZextWorkspaceHandleV1,
     event: zext_workspace_handle_v1::Event,
 ) {
-    let WmInfoProvider::Ewu(state) = &mut state.shared_state.wm_info_provider else {
-        unreachable!()
-    };
-    let group = state
+    let ewu = state.shared_state.get_ewu().unwrap();
+    let group = ewu
         .groups
         .iter_mut()
         .find(|g| {

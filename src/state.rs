@@ -1,7 +1,7 @@
 use crate::blocks_cache::BlocksCache;
 use crate::output::Output;
 use crate::protocol::*;
-use crate::wm_info_provider::*;
+use crate::wm_info_provider;
 
 use std::fmt::Display;
 use std::os::unix::io::{AsRawFd, RawFd};
@@ -74,6 +74,8 @@ impl State {
             .map_err(|e| error = Err(e.into()))
             .ok();
 
+        let wm_info_provider = wm_info_provider::bind(conn, globals, &config.wm);
+
         let mut this = Self {
             wl_compositor,
             layer_shell: globals.bind(conn, 1..=4).unwrap(),
@@ -97,7 +99,7 @@ impl State {
                 config,
                 status_cmd,
                 blocks_cache: BlocksCache::default(),
-                wm_info_provider: WmInfoProvider::bind(conn, globals, wm_info_cb),
+                wm_info_provider,
             },
 
             cursor_theme,
@@ -146,9 +148,9 @@ impl State {
             return;
         }
 
-        self.shared_state
-            .wm_info_provider
-            .new_ouput(conn, output.wl);
+        if let Some(wm) = &mut self.shared_state.wm_info_provider {
+            wm.new_ouput(conn, output.wl);
+        }
 
         let surface = self.wl_compositor.create_surface(conn);
 
@@ -178,7 +180,8 @@ impl State {
             fractional_scale,
             layer_surface,
             blocks_btns: Default::default(),
-            wm_info: Default::default(),
+            tags: Vec::new(),
+            layout_name: None,
             tags_btns: Default::default(),
             tags_computed: Vec::new(),
             layout_name_computed: None,
@@ -193,11 +196,11 @@ impl State {
 
     fn drop_bar(&mut self, conn: &mut Connection<Self>, bar_index: usize) {
         let bar = self.bars.swap_remove(bar_index);
+        if let Some(wm) = &mut self.shared_state.wm_info_provider {
+            wm.output_removed(conn, bar.output.wl);
+        }
         bar.surface.destroy(conn);
         bar.layer_surface.destroy(conn);
-        self.shared_state
-            .wm_info_provider
-            .output_removed(conn, bar.output.wl);
         bar.output.destroy(conn);
     }
 
@@ -210,6 +213,50 @@ impl State {
                 bar.show(conn, &self.shared_state);
             }
         }
+    }
+
+    fn for_each_bar<F: FnMut(&mut Bar, &mut SharedState)>(
+        &mut self,
+        output: Option<WlOutput>,
+        mut f: F,
+    ) {
+        match output {
+            Some(output) => f(
+                self.bars
+                    .iter_mut()
+                    .find(|b| b.output.wl == output)
+                    .unwrap(),
+                &mut self.shared_state,
+            ),
+            None => self
+                .bars
+                .iter_mut()
+                .for_each(|b| f(b, &mut self.shared_state)),
+        }
+    }
+
+    pub fn tags_updated(&mut self, conn: &mut Connection<Self>, output: Option<WlOutput>) {
+        self.for_each_bar(output, |bar, ss| {
+            bar.set_tags(
+                ss.wm_info_provider
+                    .as_mut()
+                    .unwrap()
+                    .get_tags(bar.output.wl),
+            );
+            bar.request_frame(conn);
+        });
+    }
+
+    pub fn layout_name_updated(&mut self, conn: &mut Connection<Self>, output: Option<WlOutput>) {
+        self.for_each_bar(output, |bar, ss| {
+            bar.set_layout_name(
+                ss.wm_info_provider
+                    .as_mut()
+                    .unwrap()
+                    .get_layout_name(bar.output.wl),
+            );
+            bar.request_frame(conn);
+        });
     }
 }
 
@@ -431,16 +478,6 @@ fn fractional_scale_cb(
         bar.scale120 = Some(scale120);
         bar.request_frame(conn);
     }
-}
-
-fn wm_info_cb(conn: &mut Connection<State>, state: &mut State, output: WlOutput, info: WmInfo) {
-    let bar = state
-        .bars
-        .iter_mut()
-        .find(|b| b.output.wl == output)
-        .unwrap();
-    bar.set_wm_info(info);
-    bar.request_frame(conn);
 }
 
 #[derive(Debug, Default, Clone, Copy)]

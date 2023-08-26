@@ -1,6 +1,9 @@
+use std::any::Any;
+
 use wayrs_client::global::*;
 use wayrs_client::Connection;
 
+use crate::config::WmConfig;
 use crate::pointer_btn::PointerBtn;
 use crate::protocol::*;
 use crate::state::State;
@@ -8,77 +11,45 @@ use crate::state::State;
 #[cfg(feature = "hyprland")]
 mod ext_workspace_unstable;
 #[cfg(feature = "hyprland")]
-use ext_workspace_unstable::*;
+pub use ext_workspace_unstable::*;
 
 mod river;
-use river::*;
+pub use river::*;
 
-pub enum WmInfoProvider {
-    None,
-    River(RiverInfoProvider),
-    #[cfg(feature = "hyprland")]
-    Ewu(ExtWorkspaceUnstable),
-}
+pub trait WmInfoProvider {
+    fn new_ouput(&mut self, conn: &mut Connection<State>, output: WlOutput);
+    fn output_removed(&mut self, conn: &mut Connection<State>, output: WlOutput);
 
-pub type WmInfoCallback = fn(&mut Connection<State>, &mut State, WlOutput, WmInfo);
+    fn get_tags(&self, output: WlOutput) -> Vec<Tag>;
+    fn get_layout_name(&self, output: WlOutput) -> Option<String>;
 
-impl WmInfoProvider {
-    pub fn bind(
-        conn: &mut Connection<State>,
-        globals: &Globals,
-        callback: WmInfoCallback,
-    ) -> WmInfoProvider {
-        if let Some(river) = RiverInfoProvider::bind(conn, globals, callback) {
-            return Self::River(river);
-        }
-
-        #[cfg(feature = "hyprland")]
-        if let Some(ext_wp_u) = ExtWorkspaceUnstable::bind(conn, globals, callback) {
-            return Self::Ewu(ext_wp_u);
-        }
-
-        Self::None
-    }
-
-    pub fn new_ouput(&mut self, conn: &mut Connection<State>, output: WlOutput) {
-        match self {
-            Self::None => (),
-            Self::River(x) => x.new_output(conn, output),
-            #[cfg(feature = "hyprland")]
-            Self::Ewu(x) => x.new_ouput(conn, output),
-        }
-    }
-
-    pub fn output_removed(&mut self, conn: &mut Connection<State>, output: WlOutput) {
-        match self {
-            Self::None => (),
-            Self::River(x) => x.output_removed(conn, output),
-            #[cfg(feature = "hyprland")]
-            Self::Ewu(x) => x.output_removed(conn, output),
-        }
-    }
-
-    pub fn click_on_tag(
+    fn click_on_tag(
         &mut self,
         conn: &mut Connection<State>,
         output: WlOutput,
         seat: WlSeat,
         tag: &str,
         btn: PointerBtn,
-    ) {
-        match self {
-            Self::None => (),
-            Self::River(x) => x.click_on_tag(conn, output, seat, tag, btn),
-            #[cfg(feature = "hyprland")]
-            Self::Ewu(x) => x.click_on_tag(conn, output, seat, tag, btn),
-        }
-    }
+    );
+
+    fn as_any(&mut self) -> &mut dyn Any;
 }
 
-#[derive(Default, Debug)]
-pub struct WmInfo {
-    pub layout_name: Option<String>,
-    pub tags: Vec<Tag>,
+pub fn bind(
+    conn: &mut Connection<State>,
+    globals: &Globals,
+    config: &WmConfig,
+) -> Option<Box<dyn WmInfoProvider>> {
+    if let Some(river) = RiverInfoProvider::bind(conn, globals, config) {
+        return Some(Box::new(river));
+    }
+
+    #[cfg(feature = "hyprland")]
+    if let Some(ext_wp_u) = ExtWorkspaceUnstable::bind(conn, globals) {
+        return Some(Box::new(ext_wp_u));
+    }
+
+    None
 }
 
 #[derive(Debug)]

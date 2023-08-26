@@ -34,18 +34,13 @@ pub struct Attributes<'a> {
     pub markup: bool,
 }
 
-#[derive(Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Deserialize, Default, Debug, Clone, Copy, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum Align {
     Right,
+    #[default]
     Left,
     Center,
-}
-
-impl Default for Align {
-    fn default() -> Self {
-        Self::Left
-    }
 }
 
 #[derive(Clone, Debug, PartialEq)]

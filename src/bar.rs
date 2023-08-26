@@ -14,7 +14,7 @@ use crate::protocol::*;
 use crate::shared_state::SharedState;
 use crate::state::State;
 use crate::text::{self, ComputedText, RenderOptions};
-use crate::wm_info_provider::WmInfo;
+use crate::wm_info_provider::Tag;
 
 pub struct Bar {
     pub output: Output,
@@ -29,7 +29,8 @@ pub struct Bar {
     pub viewport: WpViewport,
     pub fractional_scale: Option<WpFractionalScaleV1>,
     pub blocks_btns: ButtonManager<(Option<String>, Option<String>)>,
-    pub wm_info: WmInfo,
+    pub tags: Vec<Tag>,
+    pub layout_name: Option<String>,
     pub tags_btns: ButtonManager<String>,
     pub tags_computed: Vec<(ColorPair, ComputedText)>,
     pub layout_name_computed: Option<ComputedText>,
@@ -42,10 +43,14 @@ pub struct ColorPair {
 }
 
 impl Bar {
-    pub fn set_wm_info(&mut self, info: WmInfo) {
-        self.wm_info = info;
+    pub fn set_tags(&mut self, tags: Vec<Tag>) {
+        self.tags = tags;
         self.tags_btns.clear();
         self.tags_computed.clear();
+    }
+
+    pub fn set_layout_name(&mut self, layout_name: Option<String>) {
+        self.layout_name = layout_name;
         self.layout_name_computed = None;
     }
 
@@ -59,8 +64,9 @@ impl Bar {
         _y: f64,
     ) -> anyhow::Result<()> {
         if let Some(tag) = self.tags_btns.click(x) {
-            ss.wm_info_provider
-                .click_on_tag(conn, self.output.wl, seat, tag, button);
+            if let Some(wm) = &mut ss.wm_info_provider {
+                wm.click_on_tag(conn, self.output.wl, seat, tag, button);
+            }
         } else if let Some((name, instance)) = self.blocks_btns.click(x) {
             if let Some(cmd) = &mut ss.status_cmd {
                 cmd.send_click_event(&i3bar_protocol::Event {
@@ -137,7 +143,7 @@ impl Bar {
         if self.tags_computed.is_empty() {
             let mut offset_left = 0.0;
             self.tags_btns.clear();
-            for tag in &self.wm_info.tags {
+            for tag in &self.tags {
                 let (bg, fg) = if tag.is_urgent {
                     (ss.config.tag_urgent_bg, ss.config.tag_urgent_fg)
                 } else if tag.is_focused {
@@ -187,7 +193,7 @@ impl Bar {
 
         // Display layout name
         if ss.config.show_layout_name {
-            if let Some(layout_name) = &self.wm_info.layout_name {
+            if let Some(layout_name) = &self.layout_name {
                 let text = self.layout_name_computed.get_or_insert_with(|| {
                     ComputedText::new(
                         layout_name,

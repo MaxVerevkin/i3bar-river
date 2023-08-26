@@ -10,7 +10,7 @@ pub struct RiverInfoProvider {
     status_manager: ZriverStatusManagerV1,
     control: ZriverControlV1,
     output_statuses: Vec<OutputStatus>,
-    callback: WmInfoCallback,
+    max_tag: u8,
 }
 
 struct OutputStatus {
@@ -26,19 +26,19 @@ impl RiverInfoProvider {
     pub fn bind(
         conn: &mut Connection<State>,
         globals: &Globals,
-        callback: WmInfoCallback,
+        config: &WmConfig,
     ) -> Option<Self> {
         Some(Self {
             status_manager: globals.bind(conn, 1..=4).ok()?,
             control: globals.bind(conn, 1..=1).ok()?,
             output_statuses: Vec::new(),
-            callback,
+            max_tag: config.river.max_tag,
         })
     }
 }
 
-impl RiverInfoProvider {
-    pub fn new_output(&mut self, conn: &mut Connection<State>, output: WlOutput) {
+impl WmInfoProvider for RiverInfoProvider {
+    fn new_ouput(&mut self, conn: &mut Connection<State>, output: WlOutput) {
         let status =
             self.status_manager
                 .get_river_output_status_with_cb(conn, output, output_status_cb);
@@ -52,7 +52,7 @@ impl RiverInfoProvider {
         });
     }
 
-    pub fn output_removed(&mut self, conn: &mut Connection<State>, output: WlOutput) {
+    fn output_removed(&mut self, conn: &mut Connection<State>, output: WlOutput) {
         let index = self
             .output_statuses
             .iter()
@@ -62,10 +62,29 @@ impl RiverInfoProvider {
         output_status.status.destroy(conn);
     }
 
-    pub fn click_on_tag(
+    fn get_tags(&self, output: WlOutput) -> Vec<Tag> {
+        let Some(status) = self.output_statuses.iter().find(|s| s.output == output) else {
+            return Vec::new();
+        };
+        (1..=self.max_tag)
+            .map(|tag| Tag {
+                name: tag.to_string(),
+                is_focused: status.focused_tags & (1 << (tag - 1)) != 0,
+                is_active: status.active_tags & (1 << (tag - 1)) != 0,
+                is_urgent: status.urgent_tags & (1 << (tag - 1)) != 0,
+            })
+            .collect()
+    }
+
+    fn get_layout_name(&self, output: WlOutput) -> Option<String> {
+        let status = self.output_statuses.iter().find(|s| s.output == output)?;
+        status.layout_name.clone()
+    }
+
+    fn click_on_tag(
         &mut self,
         conn: &mut Connection<State>,
-        _: WlOutput,
+        _output: WlOutput,
         seat: WlSeat,
         tag: &str,
         btn: PointerBtn,
@@ -82,6 +101,10 @@ impl RiverInfoProvider {
         self.control
             .run_command_with_cb(conn, seat, river_command_cb);
     }
+
+    fn as_any(&mut self) -> &mut dyn Any {
+        self
+    }
 }
 
 fn output_status_cb(
@@ -90,45 +113,40 @@ fn output_status_cb(
     output_status: ZriverOutputStatusV1,
     event: zriver_output_status_v1::Event,
 ) {
-    let WmInfoProvider::River(river) = &mut state.shared_state.wm_info_provider else {
-        unreachable!()
-    };
-    let max_tag = state.shared_state.config.wm.river.max_tag.min(32);
-
+    let river = state.shared_state.get_river().unwrap();
     let status = river
         .output_statuses
         .iter_mut()
         .find(|s| s.status == output_status)
         .unwrap();
+    let output = status.output;
 
     use zriver_output_status_v1::Event;
     match event {
-        Event::FocusedTags(tags) => status.focused_tags = tags,
+        Event::FocusedTags(tags) => {
+            status.focused_tags = tags;
+            state.tags_updated(conn, Some(output));
+        }
         Event::ViewTags(tags) => {
             status.active_tags = tags
                 .chunks_exact(4)
                 .map(|bytes| u32::from_ne_bytes(bytes.try_into().unwrap()))
                 .fold(0, |a, b| a | b);
+            state.tags_updated(conn, Some(output));
         }
-        Event::UrgentTags(tags) => status.urgent_tags = tags,
-        Event::LayoutName(ln) => status.layout_name = Some(ln.to_string_lossy().into()),
-        Event::LayoutNameClear => status.layout_name = None,
+        Event::UrgentTags(tags) => {
+            status.urgent_tags = tags;
+            state.tags_updated(conn, Some(output));
+        }
+        Event::LayoutName(ln) => {
+            status.layout_name = Some(ln.to_string_lossy().into());
+            state.layout_name_updated(conn, Some(output));
+        }
+        Event::LayoutNameClear => {
+            status.layout_name = None;
+            state.layout_name_updated(conn, Some(output));
+        }
     }
-
-    let info = WmInfo {
-        layout_name: status.layout_name.clone(),
-        tags: (1..=max_tag)
-            .map(|tag| Tag {
-                name: tag.to_string(),
-                is_focused: status.focused_tags & (1 << (tag - 1)) != 0,
-                is_active: status.active_tags & (1 << (tag - 1)) != 0,
-                is_urgent: status.urgent_tags & (1 << (tag - 1)) != 0,
-            })
-            .collect(),
-    };
-
-    let output = status.output;
-    (river.callback)(conn, state, output, info);
 }
 
 fn river_command_cb(
