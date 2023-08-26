@@ -83,6 +83,7 @@ hide_inactive_tags = true
 invert_touchpad_scrolling = true
 show_layout_name = true
 blend = true # whether tags/blocks colors should blend with bar's background
+show_mode = true
 
 # WM-specific options
 [wm.river]

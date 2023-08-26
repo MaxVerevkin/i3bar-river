@@ -22,6 +22,7 @@ pub trait WmInfoProvider {
 
     fn get_tags(&self, output: WlOutput) -> Vec<Tag>;
     fn get_layout_name(&self, output: WlOutput) -> Option<String>;
+    fn get_mode_name(&self, output: WlOutput) -> Option<String>;
 
     fn click_on_tag(
         &mut self,

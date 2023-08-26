@@ -182,9 +182,11 @@ impl State {
             blocks_btns: Default::default(),
             tags: Vec::new(),
             layout_name: None,
+            mode_name: None,
             tags_btns: Default::default(),
             tags_computed: Vec::new(),
             layout_name_computed: None,
+            mode_computed: None,
         };
 
         if !self.hidden {
@@ -254,6 +256,18 @@ impl State {
                     .as_mut()
                     .unwrap()
                     .get_layout_name(bar.output.wl),
+            );
+            bar.request_frame(conn);
+        });
+    }
+
+    pub fn mode_name_updated(&mut self, conn: &mut Connection<Self>, output: Option<WlOutput>) {
+        self.for_each_bar(output, |bar, ss| {
+            bar.set_mode_name(
+                ss.wm_info_provider
+                    .as_mut()
+                    .unwrap()
+                    .get_mode_name(bar.output.wl),
             );
             bar.request_frame(conn);
         });

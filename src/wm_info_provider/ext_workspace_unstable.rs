@@ -79,6 +79,10 @@ impl WmInfoProvider for ExtWorkspaceUnstable {
         None
     }
 
+    fn get_mode_name(&self, _output: WlOutput) -> Option<String> {
+        None
+    }
+
     fn click_on_tag(
         &mut self,
         conn: &mut Connection<State>,

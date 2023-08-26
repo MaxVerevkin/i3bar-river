@@ -31,9 +31,11 @@ pub struct Bar {
     pub blocks_btns: ButtonManager<(Option<String>, Option<String>)>,
     pub tags: Vec<Tag>,
     pub layout_name: Option<String>,
+    pub mode_name: Option<String>,
     pub tags_btns: ButtonManager<String>,
     pub tags_computed: Vec<(ColorPair, ComputedText)>,
     pub layout_name_computed: Option<ComputedText>,
+    pub mode_computed: Option<ComputedText>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -52,6 +54,11 @@ impl Bar {
     pub fn set_layout_name(&mut self, layout_name: Option<String>) {
         self.layout_name = layout_name;
         self.layout_name_computed = None;
+    }
+
+    pub fn set_mode_name(&mut self, mode_name: Option<String>) {
+        self.mode_name = mode_name;
+        self.mode_computed = None;
     }
 
     pub fn click(
@@ -216,6 +223,38 @@ impl Bar {
                         bg_color: None,
                         r_left: 0.0,
                         r_right: 0.0,
+                        overlap: 0.0,
+                    },
+                );
+                offset_left += text.width;
+            }
+        }
+
+        // Display mode
+        if ss.config.show_mode {
+            if let Some(mode) = &self.mode_name {
+                let text = self.mode_computed.get_or_insert_with(|| {
+                    ComputedText::new(
+                        mode,
+                        text::Attributes {
+                            font: &ss.config.font,
+                            padding_left: 10.0,
+                            padding_right: 10.0,
+                            min_width: None,
+                            align: Default::default(),
+                            markup: false,
+                        },
+                    )
+                });
+                text.render(
+                    &cairo_ctx,
+                    RenderOptions {
+                        x_offset: offset_left,
+                        bar_height: height_f,
+                        fg_color: ss.config.tag_urgent_fg,
+                        bg_color: Some(ss.config.tag_urgent_bg),
+                        r_left: ss.config.tags_r,
+                        r_right: ss.config.tags_r,
                         overlap: 0.0,
                     },
                 );

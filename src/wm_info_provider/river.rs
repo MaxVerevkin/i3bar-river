@@ -11,6 +11,7 @@ pub struct RiverInfoProvider {
     control: ZriverControlV1,
     output_statuses: Vec<OutputStatus>,
     max_tag: u8,
+    seat_status: SeatStatus,
 }
 
 struct OutputStatus {
@@ -22,17 +23,32 @@ struct OutputStatus {
     layout_name: Option<String>,
 }
 
+struct SeatStatus {
+    _status: ZriverSeatStatusV1,
+    mode: Option<String>,
+}
+
 impl RiverInfoProvider {
     pub fn bind(
         conn: &mut Connection<State>,
         globals: &Globals,
         config: &WmConfig,
     ) -> Option<Self> {
+        let status_manager = globals.bind(conn, 1..=4).ok()?;
+        let wl_seat: WlSeat = globals.bind(conn, ..).ok()?; // river supports just one seat
         Some(Self {
-            status_manager: globals.bind(conn, 1..=4).ok()?,
+            status_manager,
             control: globals.bind(conn, 1..=1).ok()?,
             output_statuses: Vec::new(),
             max_tag: config.river.max_tag,
+            seat_status: SeatStatus {
+                _status: status_manager.get_river_seat_status_with_cb(
+                    conn,
+                    wl_seat,
+                    seat_status_cb,
+                ),
+                mode: None,
+            },
         })
     }
 }
@@ -79,6 +95,10 @@ impl WmInfoProvider for RiverInfoProvider {
     fn get_layout_name(&self, output: WlOutput) -> Option<String> {
         let status = self.output_statuses.iter().find(|s| s.output == output)?;
         status.layout_name.clone()
+    }
+
+    fn get_mode_name(&self, _output: WlOutput) -> Option<String> {
+        self.seat_status.mode.clone()
     }
 
     fn click_on_tag(
@@ -146,6 +166,20 @@ fn output_status_cb(
             status.layout_name = None;
             state.layout_name_updated(conn, Some(output));
         }
+    }
+}
+
+fn seat_status_cb(
+    conn: &mut Connection<State>,
+    state: &mut State,
+    _: ZriverSeatStatusV1,
+    event: zriver_seat_status_v1::Event,
+) {
+    if let zriver_seat_status_v1::Event::Mode(mode) = event {
+        let river = state.shared_state.get_river().unwrap();
+        let mode = mode.to_string_lossy().into_owned();
+        river.seat_status.mode = (mode != "normal").then_some(mode);
+        state.mode_name_updated(conn, None);
     }
 }
 
