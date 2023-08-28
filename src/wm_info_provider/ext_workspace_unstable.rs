@@ -1,7 +1,7 @@
-use wayrs_client::global::*;
 use wayrs_client::object::ObjectId;
 use wayrs_client::proxy::Proxy;
 use wayrs_client::Connection;
+use wayrs_client::{global::*, EventCtx};
 
 use super::*;
 use crate::state::State;
@@ -30,7 +30,7 @@ struct Workspace {
 impl ExtWorkspaceUnstable {
     pub fn bind(conn: &mut Connection<State>, globals: &Globals) -> Option<Self> {
         Some(Self {
-            manager: globals.bind_with_cb(conn, 1..=1, manager_cb).ok()?,
+            manager: globals.bind_with_cb(conn, 1, manager_cb).ok()?,
             groups: Vec::new(),
             known_outputs: Vec::new(),
         })
@@ -112,48 +112,38 @@ impl WmInfoProvider for ExtWorkspaceUnstable {
     }
 }
 
-fn manager_cb(
-    conn: &mut Connection<State>,
-    state: &mut State,
-    _: ZextWorkspaceManagerV1,
-    event: zext_workspace_manager_v1::Event,
-) {
-    let ewu = state.shared_state.get_ewu().unwrap();
+fn manager_cb(ctx: EventCtx<State, ZextWorkspaceManagerV1>) {
+    let ewu = ctx.state.shared_state.get_ewu().unwrap();
 
-    match event {
+    match ctx.event {
         zext_workspace_manager_v1::Event::WorkspaceGroup(group_handle) => {
-            conn.set_callback_for(group_handle, group_cb);
+            ctx.conn.set_callback_for(group_handle, group_cb);
             ewu.groups.push(Group {
                 group_handle,
                 workspaces: Vec::new(),
                 outputs: Vec::new(),
             });
         }
-        zext_workspace_manager_v1::Event::Done => state.tags_updated(conn, None),
+        zext_workspace_manager_v1::Event::Done => ctx.state.tags_updated(ctx.conn, None),
         zext_workspace_manager_v1::Event::Finished => unreachable!(),
     }
 }
 
-fn group_cb(
-    conn: &mut Connection<State>,
-    state: &mut State,
-    group_handle: ZextWorkspaceGroupHandleV1,
-    event: zext_workspace_group_handle_v1::Event,
-) {
-    let ewu = state.shared_state.get_ewu().unwrap();
+fn group_cb(ctx: EventCtx<State, ZextWorkspaceGroupHandleV1>) {
+    let ewu = ctx.state.shared_state.get_ewu().unwrap();
     let group = ewu
         .groups
         .iter_mut()
-        .find(|g| g.group_handle == group_handle)
+        .find(|g| g.group_handle == ctx.proxy)
         .unwrap();
 
-    match event {
+    match ctx.event {
         zext_workspace_group_handle_v1::Event::OutputEnter(output) => {
             group.outputs.push(output);
         }
         zext_workspace_group_handle_v1::Event::OutputLeave(_) => todo!(),
         zext_workspace_group_handle_v1::Event::Workspace(workspace_handle) => {
-            conn.set_callback_for(workspace_handle, workspace_cb);
+            ctx.conn.set_callback_for(workspace_handle, workspace_cb);
             group.workspaces.push(Workspace {
                 workspace_handle,
                 name: None,
@@ -167,29 +157,21 @@ fn group_cb(
     }
 }
 
-fn workspace_cb(
-    conn: &mut Connection<State>,
-    state: &mut State,
-    workspace_handle: ZextWorkspaceHandleV1,
-    event: zext_workspace_handle_v1::Event,
-) {
-    let ewu = state.shared_state.get_ewu().unwrap();
+fn workspace_cb(ctx: EventCtx<State, ZextWorkspaceHandleV1>) {
+    let ewu = ctx.state.shared_state.get_ewu().unwrap();
+
     let group = ewu
         .groups
         .iter_mut()
-        .find(|g| {
-            g.workspaces
-                .iter()
-                .any(|w| w.workspace_handle == workspace_handle)
-        })
+        .find(|g| g.workspaces.iter().any(|w| w.workspace_handle == ctx.proxy))
         .unwrap();
     let workspace = group
         .workspaces
         .iter_mut()
-        .find(|w| w.workspace_handle == workspace_handle)
+        .find(|w| w.workspace_handle == ctx.proxy)
         .unwrap();
 
-    match event {
+    match ctx.event {
         zext_workspace_handle_v1::Event::Name(name) => {
             workspace.name = Some(name.to_string_lossy().into_owned());
         }
@@ -206,10 +188,8 @@ fn workspace_cb(
             }
         }
         zext_workspace_handle_v1::Event::Remove => {
-            group
-                .workspaces
-                .retain(|w| w.workspace_handle != workspace_handle);
-            workspace_handle.destroy(conn);
+            group.workspaces.retain(|w| w.workspace_handle != ctx.proxy);
+            ctx.proxy.destroy(ctx.conn);
         }
     }
 }

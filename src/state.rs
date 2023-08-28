@@ -10,6 +10,7 @@ use std::path::Path;
 use wayrs_client::global::{GlobalExt, Globals, GlobalsExt};
 use wayrs_client::proxy::Proxy;
 use wayrs_client::Connection;
+use wayrs_client::EventCtx;
 use wayrs_utils::cursor::{CursorImage, CursorShape, CursorTheme, ThemedPointer};
 use wayrs_utils::seats::{SeatHandler, Seats};
 use wayrs_utils::shm_alloc::ShmAlloc;
@@ -284,25 +285,22 @@ fn wl_registry_cb(conn: &mut Connection<State>, state: &mut State, event: &wl_re
     }
 }
 
-fn wl_pointer_cb(
-    conn: &mut Connection<State>,
-    state: &mut State,
-    pointer: WlPointer,
-    event: wl_pointer::Event,
-) {
-    let pointer = state
+fn wl_pointer_cb(ctx: EventCtx<State, WlPointer>) {
+    let pointer = ctx
+        .state
         .pointers
         .iter_mut()
-        .find(|p| p.pointer == pointer)
+        .find(|p| p.pointer == ctx.proxy)
         .unwrap();
 
     use wl_pointer::Event;
-    match event {
+    match ctx.event {
         Event::Frame => {
             let btn = pointer.pending_button.take();
             let scroll = pointer.scroll_frame.finalize();
             if let Some(surface) = pointer.current_surface {
-                let bar = state
+                let bar = ctx
+                    .state
                     .bars
                     .iter_mut()
                     .find(|bar| bar.surface == surface)
@@ -310,8 +308,8 @@ fn wl_pointer_cb(
 
                 if let Some(btn) = btn {
                     bar.click(
-                        conn,
-                        &mut state.shared_state,
+                        ctx.conn,
+                        &mut ctx.state.shared_state,
                         btn,
                         pointer.seat,
                         pointer.x,
@@ -320,7 +318,7 @@ fn wl_pointer_cb(
                     .unwrap();
                 }
 
-                if scroll.is_finger && state.shared_state.config.invert_touchpad_scrolling {
+                if scroll.is_finger && ctx.state.shared_state.config.invert_touchpad_scrolling {
                     pointer.pending_scroll -= scroll.absolute;
                 } else {
                     pointer.pending_scroll += scroll.absolute;
@@ -342,8 +340,8 @@ fn wl_pointer_cb(
 
                 if let Some(btn) = btn {
                     bar.click(
-                        conn,
-                        &mut state.shared_state,
+                        ctx.conn,
+                        &mut ctx.state.shared_state,
                         btn,
                         pointer.seat,
                         pointer.x,
@@ -354,7 +352,8 @@ fn wl_pointer_cb(
             }
         }
         Event::Enter(args) => {
-            let bar = state
+            let bar = ctx
+                .state
                 .bars
                 .iter()
                 .find(|bar| bar.surface.id() == args.surface)
@@ -362,10 +361,10 @@ fn wl_pointer_cb(
             pointer.current_surface = Some(bar.surface);
             pointer.x = args.surface_x.as_f64();
             pointer.y = args.surface_y.as_f64();
-            if let Some(default_cursor) = &state.default_cursor {
+            if let Some(default_cursor) = &ctx.state.default_cursor {
                 pointer.themed_pointer.set_cursor(
-                    conn,
-                    &mut state.shared_state.shm,
+                    ctx.conn,
+                    &mut ctx.state.shared_state.shm,
                     default_cursor,
                     bar.output.scale,
                     args.serial,

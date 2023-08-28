@@ -1,7 +1,7 @@
 use std::ffi::CString;
 
-use wayrs_client::global::*;
 use wayrs_client::{cstr, Connection};
+use wayrs_client::{global::*, EventCtx};
 
 use super::*;
 use crate::state::State;
@@ -38,7 +38,7 @@ impl RiverInfoProvider {
         let wl_seat: WlSeat = globals.bind(conn, ..).ok()?; // river supports just one seat
         Some(Self {
             status_manager,
-            control: globals.bind(conn, 1..=1).ok()?,
+            control: globals.bind(conn, 1).ok()?,
             output_statuses: Vec::new(),
             max_tag: config.river.max_tag,
             seat_status: SeatStatus {
@@ -127,69 +127,54 @@ impl WmInfoProvider for RiverInfoProvider {
     }
 }
 
-fn output_status_cb(
-    conn: &mut Connection<State>,
-    state: &mut State,
-    output_status: ZriverOutputStatusV1,
-    event: zriver_output_status_v1::Event,
-) {
-    let river = state.shared_state.get_river().unwrap();
+fn output_status_cb(ctx: EventCtx<State, ZriverOutputStatusV1>) {
+    let river = ctx.state.shared_state.get_river().unwrap();
     let status = river
         .output_statuses
         .iter_mut()
-        .find(|s| s.status == output_status)
+        .find(|s| s.status == ctx.proxy)
         .unwrap();
     let output = status.output;
 
     use zriver_output_status_v1::Event;
-    match event {
+    match ctx.event {
         Event::FocusedTags(tags) => {
             status.focused_tags = tags;
-            state.tags_updated(conn, Some(output));
+            ctx.state.tags_updated(ctx.conn, Some(output));
         }
         Event::ViewTags(tags) => {
             status.active_tags = tags
                 .chunks_exact(4)
                 .map(|bytes| u32::from_ne_bytes(bytes.try_into().unwrap()))
                 .fold(0, |a, b| a | b);
-            state.tags_updated(conn, Some(output));
+            ctx.state.tags_updated(ctx.conn, Some(output));
         }
         Event::UrgentTags(tags) => {
             status.urgent_tags = tags;
-            state.tags_updated(conn, Some(output));
+            ctx.state.tags_updated(ctx.conn, Some(output));
         }
         Event::LayoutName(ln) => {
             status.layout_name = Some(ln.to_string_lossy().into());
-            state.layout_name_updated(conn, Some(output));
+            ctx.state.layout_name_updated(ctx.conn, Some(output));
         }
         Event::LayoutNameClear => {
             status.layout_name = None;
-            state.layout_name_updated(conn, Some(output));
+            ctx.state.layout_name_updated(ctx.conn, Some(output));
         }
     }
 }
 
-fn seat_status_cb(
-    conn: &mut Connection<State>,
-    state: &mut State,
-    _: ZriverSeatStatusV1,
-    event: zriver_seat_status_v1::Event,
-) {
-    if let zriver_seat_status_v1::Event::Mode(mode) = event {
-        let river = state.shared_state.get_river().unwrap();
+fn seat_status_cb(ctx: EventCtx<State, ZriverSeatStatusV1>) {
+    if let zriver_seat_status_v1::Event::Mode(mode) = ctx.event {
+        let river = ctx.state.shared_state.get_river().unwrap();
         let mode = mode.to_string_lossy().into_owned();
         river.seat_status.mode = (mode != "normal").then_some(mode);
-        state.mode_name_updated(conn, None);
+        ctx.state.mode_name_updated(ctx.conn, None);
     }
 }
 
-fn river_command_cb(
-    conn: &mut Connection<State>,
-    state: &mut State,
-    _: ZriverCommandCallbackV1,
-    event: zriver_command_callback_v1::Event,
-) {
-    if let zriver_command_callback_v1::Event::Failure(msg) = event {
-        state.set_error(conn, msg.to_string_lossy())
+fn river_command_cb(ctx: EventCtx<State, ZriverCommandCallbackV1>) {
+    if let zriver_command_callback_v1::Event::Failure(msg) = ctx.event {
+        ctx.state.set_error(ctx.conn, msg.to_string_lossy())
     }
 }

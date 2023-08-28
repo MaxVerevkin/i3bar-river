@@ -1,6 +1,6 @@
 use pangocairo::cairo;
 
-use wayrs_client::Connection;
+use wayrs_client::{Connection, EventCtx};
 use wayrs_utils::shm_alloc::BufferSpec;
 
 use crate::blocks_cache::ComputedBlock;
@@ -333,10 +333,15 @@ impl Bar {
 
     pub fn request_frame(&mut self, conn: &mut Connection<State>) {
         if self.mapped && !self.hidden && self.frame_cb.is_none() {
-            self.frame_cb = Some(self.surface.frame_with_cb(conn, |conn, state, cb, _| {
-                if let Some(bar) = state.bars.iter_mut().find(|bar| bar.frame_cb == Some(cb)) {
+            self.frame_cb = Some(self.surface.frame_with_cb(conn, |ctx| {
+                if let Some(bar) = ctx
+                    .state
+                    .bars
+                    .iter_mut()
+                    .find(|bar| bar.frame_cb == Some(ctx.proxy))
+                {
                     bar.frame_cb = None;
-                    bar.frame(conn, &mut state.shared_state);
+                    bar.frame(ctx.conn, &mut ctx.state.shared_state);
                 }
             }));
             self.surface.commit(conn);
@@ -529,60 +534,53 @@ pub fn compute_tag_label(label: &str, config: &Config) -> ComputedText {
     )
 }
 
-fn layer_surface_cb(
-    conn: &mut Connection<State>,
-    state: &mut State,
-    layer_surface: zwlr_layer_surface_v1::ZwlrLayerSurfaceV1,
-    event: zwlr_layer_surface_v1::Event,
-) {
-    match event {
+fn layer_surface_cb(ctx: EventCtx<State, ZwlrLayerSurfaceV1>) {
+    match ctx.event {
         zwlr_layer_surface_v1::Event::Configure(args) => {
-            let bar = state
+            let bar = ctx
+                .state
                 .bars
                 .iter_mut()
-                .find(|bar| bar.layer_surface == layer_surface)
+                .find(|bar| bar.layer_surface == ctx.proxy)
                 .unwrap();
             if bar.hidden {
                 return;
             }
             assert_ne!(args.width, 0);
             bar.width = args.width;
-            bar.layer_surface.ack_configure(conn, args.serial);
+            bar.layer_surface.ack_configure(ctx.conn, args.serial);
             if bar.mapped {
-                bar.request_frame(conn);
+                bar.request_frame(ctx.conn);
             } else {
                 bar.mapped = true;
-                bar.frame(conn, &mut state.shared_state);
+                bar.frame(ctx.conn, &mut ctx.state.shared_state);
             }
         }
         zwlr_layer_surface_v1::Event::Closed => {
-            let bar_index = state
+            let bar_index = ctx
+                .state
                 .bars
                 .iter()
-                .position(|bar| bar.layer_surface == layer_surface)
+                .position(|bar| bar.layer_surface == ctx.proxy)
                 .unwrap();
-            state.drop_bar(conn, bar_index);
+            ctx.state.drop_bar(ctx.conn, bar_index);
         }
         _ => (),
     }
 }
 
-fn fractional_scale_cb(
-    conn: &mut Connection<State>,
-    state: &mut State,
-    fractional_scale: WpFractionalScaleV1,
-    event: wp_fractional_scale_v1::Event,
-) {
-    let wp_fractional_scale_v1::Event::PreferredScale(scale120) = event else {
+fn fractional_scale_cb(ctx: EventCtx<State, WpFractionalScaleV1>) {
+    let wp_fractional_scale_v1::Event::PreferredScale(scale120) = ctx.event else {
         return;
     };
-    let bar = state
+    let bar = ctx
+        .state
         .bars
         .iter_mut()
-        .find(|b| b.fractional_scale == Some(fractional_scale))
+        .find(|b| b.fractional_scale == Some(ctx.proxy))
         .unwrap();
     if bar.scale120 != Some(scale120) {
         bar.scale120 = Some(scale120);
-        bar.request_frame(conn);
+        bar.request_frame(ctx.conn);
     }
 }
