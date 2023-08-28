@@ -20,10 +20,10 @@ use crate::{
 };
 
 pub struct State {
-    wl_compositor: WlCompositor,
-    layer_shell: ZwlrLayerShellV1,
-    viewporter: WpViewporter,
-    fractional_scale_manager: Option<WpFractionalScaleManagerV1>,
+    pub wl_compositor: WlCompositor,
+    pub layer_shell: ZwlrLayerShellV1,
+    pub viewporter: WpViewporter,
+    pub fractional_scale_manager: Option<WpFractionalScaleManagerV1>,
 
     seats: Seats,
     pointers: Vec<Pointer>,
@@ -152,42 +152,7 @@ impl State {
             wm.new_ouput(conn, output.wl);
         }
 
-        let surface = self.wl_compositor.create_surface(conn);
-
-        let fractional_scale = self
-            .fractional_scale_manager
-            .map(|mgr| mgr.get_fractional_scale_with_cb(conn, surface, fractional_scale_cb));
-
-        let layer_surface = self.layer_shell.get_layer_surface_with_cb(
-            conn,
-            surface,
-            Some(output.wl),
-            zwlr_layer_shell_v1::Layer::Top,
-            wayrs_client::cstr!("i3bar-river").into(),
-            layer_surface_cb,
-        );
-
-        let mut bar = Bar {
-            output,
-            hidden: self.hidden,
-            mapped: false,
-            frame_cb: None,
-            width: 0,
-            height: self.shared_state.config.height,
-            scale120: None,
-            surface,
-            viewport: self.viewporter.get_viewport(conn, surface),
-            fractional_scale,
-            layer_surface,
-            blocks_btns: Default::default(),
-            tags: Vec::new(),
-            layout_name: None,
-            mode_name: None,
-            tags_btns: Default::default(),
-            tags_computed: Vec::new(),
-            layout_name_computed: None,
-            mode_computed: None,
-        };
+        let mut bar = Bar::new(conn, self, output);
 
         if !self.hidden {
             bar.show(conn, &self.shared_state);
@@ -196,14 +161,12 @@ impl State {
         self.bars.push(bar);
     }
 
-    fn drop_bar(&mut self, conn: &mut Connection<Self>, bar_index: usize) {
+    pub fn drop_bar(&mut self, conn: &mut Connection<Self>, bar_index: usize) {
         let bar = self.bars.swap_remove(bar_index);
         if let Some(wm) = &mut self.shared_state.wm_info_provider {
             wm.output_removed(conn, bar.output.wl);
         }
-        bar.surface.destroy(conn);
-        bar.layer_surface.destroy(conn);
-        bar.output.destroy(conn);
+        bar.destroy(conn);
     }
 
     pub fn toggle_visibility(&mut self, conn: &mut Connection<Self>) {
@@ -321,44 +284,6 @@ fn wl_registry_cb(conn: &mut Connection<State>, state: &mut State, event: &wl_re
     }
 }
 
-fn layer_surface_cb(
-    conn: &mut Connection<State>,
-    state: &mut State,
-    layer_surface: zwlr_layer_surface_v1::ZwlrLayerSurfaceV1,
-    event: zwlr_layer_surface_v1::Event,
-) {
-    match event {
-        zwlr_layer_surface_v1::Event::Configure(args) => {
-            let bar = state
-                .bars
-                .iter_mut()
-                .find(|bar| bar.layer_surface == layer_surface)
-                .unwrap();
-            if bar.hidden {
-                return;
-            }
-            assert_ne!(args.width, 0);
-            bar.width = args.width;
-            bar.layer_surface.ack_configure(conn, args.serial);
-            if bar.mapped {
-                bar.request_frame(conn);
-            } else {
-                bar.mapped = true;
-                bar.frame(conn, &mut state.shared_state);
-            }
-        }
-        zwlr_layer_surface_v1::Event::Closed => {
-            let bar_index = state
-                .bars
-                .iter()
-                .position(|bar| bar.layer_surface == layer_surface)
-                .unwrap();
-            state.drop_bar(conn, bar_index);
-        }
-        _ => (),
-    }
-}
-
 fn wl_pointer_cb(
     conn: &mut Connection<State>,
     state: &mut State,
@@ -471,26 +396,6 @@ fn wl_pointer_cb(
             }
         }
         _ => (),
-    }
-}
-
-fn fractional_scale_cb(
-    conn: &mut Connection<State>,
-    state: &mut State,
-    fractional_scale: WpFractionalScaleV1,
-    event: wp_fractional_scale_v1::Event,
-) {
-    let wp_fractional_scale_v1::Event::PreferredScale(scale120) = event else {
-        return;
-    };
-    let bar = state
-        .bars
-        .iter_mut()
-        .find(|b| b.fractional_scale == Some(fractional_scale))
-        .unwrap();
-    if bar.scale120 != Some(scale120) {
-        bar.scale120 = Some(scale120);
-        bar.request_frame(conn);
     }
 }
 

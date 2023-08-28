@@ -18,24 +18,24 @@ use crate::wm_info_provider::Tag;
 
 pub struct Bar {
     pub output: Output,
-    pub hidden: bool,
-    pub mapped: bool,
-    pub frame_cb: Option<WlCallback>,
-    pub width: u32,
-    pub height: u32,
-    pub scale120: Option<u32>,
+    hidden: bool,
+    mapped: bool,
+    frame_cb: Option<WlCallback>,
+    width: u32,
+    height: u32,
+    scale120: Option<u32>,
     pub surface: WlSurface,
-    pub layer_surface: ZwlrLayerSurfaceV1,
-    pub viewport: WpViewport,
-    pub fractional_scale: Option<WpFractionalScaleV1>,
-    pub blocks_btns: ButtonManager<(Option<String>, Option<String>)>,
-    pub tags: Vec<Tag>,
-    pub layout_name: Option<String>,
-    pub mode_name: Option<String>,
-    pub tags_btns: ButtonManager<String>,
-    pub tags_computed: Vec<(ColorPair, ComputedText)>,
-    pub layout_name_computed: Option<ComputedText>,
-    pub mode_computed: Option<ComputedText>,
+    layer_surface: ZwlrLayerSurfaceV1,
+    viewport: WpViewport,
+    fractional_scale: Option<WpFractionalScaleV1>,
+    blocks_btns: ButtonManager<(Option<String>, Option<String>)>,
+    tags: Vec<Tag>,
+    layout_name: Option<String>,
+    mode_name: Option<String>,
+    tags_btns: ButtonManager<String>,
+    tags_computed: Vec<(ColorPair, ComputedText)>,
+    layout_name_computed: Option<ComputedText>,
+    mode_computed: Option<ComputedText>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -45,6 +45,55 @@ pub struct ColorPair {
 }
 
 impl Bar {
+    pub fn new(conn: &mut Connection<State>, state: &State, output: Output) -> Self {
+        let surface = state.wl_compositor.create_surface(conn);
+
+        let fractional_scale = state
+            .fractional_scale_manager
+            .map(|mgr| mgr.get_fractional_scale_with_cb(conn, surface, fractional_scale_cb));
+
+        let layer_surface = state.layer_shell.get_layer_surface_with_cb(
+            conn,
+            surface,
+            Some(output.wl),
+            zwlr_layer_shell_v1::Layer::Top,
+            wayrs_client::cstr!("i3bar-river").into(),
+            layer_surface_cb,
+        );
+
+        Self {
+            output,
+            hidden: true,
+            mapped: false,
+            frame_cb: None,
+            width: 0,
+            height: state.shared_state.config.height,
+            scale120: None,
+            surface,
+            viewport: state.viewporter.get_viewport(conn, surface),
+            fractional_scale,
+            layer_surface,
+            blocks_btns: Default::default(),
+            tags: Vec::new(),
+            layout_name: None,
+            mode_name: None,
+            tags_btns: Default::default(),
+            tags_computed: Vec::new(),
+            layout_name_computed: None,
+            mode_computed: None,
+        }
+    }
+
+    pub fn destroy(self, conn: &mut Connection<State>) {
+        self.output.destroy(conn);
+        self.surface.destroy(conn);
+        self.layer_surface.destroy(conn);
+        self.viewport.destroy(conn);
+        if let Some(fs) = self.fractional_scale {
+            fs.destroy(conn);
+        }
+    }
+
     pub fn set_tags(&mut self, tags: Vec<Tag>) {
         self.tags = tags;
         self.tags_btns.clear();
@@ -478,4 +527,62 @@ pub fn compute_tag_label(label: &str, config: &Config) -> ComputedText {
             markup: false,
         },
     )
+}
+
+fn layer_surface_cb(
+    conn: &mut Connection<State>,
+    state: &mut State,
+    layer_surface: zwlr_layer_surface_v1::ZwlrLayerSurfaceV1,
+    event: zwlr_layer_surface_v1::Event,
+) {
+    match event {
+        zwlr_layer_surface_v1::Event::Configure(args) => {
+            let bar = state
+                .bars
+                .iter_mut()
+                .find(|bar| bar.layer_surface == layer_surface)
+                .unwrap();
+            if bar.hidden {
+                return;
+            }
+            assert_ne!(args.width, 0);
+            bar.width = args.width;
+            bar.layer_surface.ack_configure(conn, args.serial);
+            if bar.mapped {
+                bar.request_frame(conn);
+            } else {
+                bar.mapped = true;
+                bar.frame(conn, &mut state.shared_state);
+            }
+        }
+        zwlr_layer_surface_v1::Event::Closed => {
+            let bar_index = state
+                .bars
+                .iter()
+                .position(|bar| bar.layer_surface == layer_surface)
+                .unwrap();
+            state.drop_bar(conn, bar_index);
+        }
+        _ => (),
+    }
+}
+
+fn fractional_scale_cb(
+    conn: &mut Connection<State>,
+    state: &mut State,
+    fractional_scale: WpFractionalScaleV1,
+    event: wp_fractional_scale_v1::Event,
+) {
+    let wp_fractional_scale_v1::Event::PreferredScale(scale120) = event else {
+        return;
+    };
+    let bar = state
+        .bars
+        .iter_mut()
+        .find(|b| b.fractional_scale == Some(fractional_scale))
+        .unwrap();
+    if bar.scale120 != Some(scale120) {
+        bar.scale120 = Some(scale120);
+        bar.request_frame(conn);
+    }
 }
