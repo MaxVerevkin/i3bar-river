@@ -291,8 +291,9 @@ version = "0.1.3"
 dependencies = [
  "anyhow",
  "clap",
+ "libc",
  "memchr",
- "nix 0.26.2",
+ "nix",
  "pangocairo",
  "serde",
  "serde_json",
@@ -354,18 +355,6 @@ name = "minimal-lexical"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "68354c5c6bd36d73ff3feceb05efa59b6acb7626617f4962be322a825e61f79a"
-
-[[package]]
-name = "nix"
-version = "0.26.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bfdda3d196821d6af13126e40375cdf7da646a96114af134d5f417a9a1dc8e1a"
-dependencies = [
- "bitflags 1.3.2",
- "cfg-if",
- "libc",
- "static_assertions",
-]
 
 [[package]]
 name = "nix"
@@ -617,12 +606,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "62bb4feee49fdd9f707ef802e22365a35de4b7b299de4763d44bfea899442ff9"
 
 [[package]]
-name = "static_assertions"
-version = "1.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
-
-[[package]]
 name = "syn"
 version = "1.0.109"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -741,7 +724,7 @@ version = "0.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e4acba2f832601f9f57e1ff86347af792e6dcb19f5b6155328faec87257bfa76"
 dependencies = [
- "nix 0.27.1",
+ "nix",
  "thiserror",
  "wayrs-scanner",
 ]

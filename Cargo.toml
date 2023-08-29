@@ -14,7 +14,7 @@ hyprland = []
 [dependencies]
 anyhow = "1"
 memchr = "2"
-nix = { version = "0.26", default-features = false, features = ["fs", "poll"] }
+nix = { version = "0.27", default-features = false, features = ["fs"] }
 pangocairo = "0.17"
 serde_json = "1"
 serde = { version = "1", features = ["derive"] }
@@ -24,6 +24,7 @@ wayrs-client = "0.12"
 wayrs-protocols = { version = "0.12", features = ["wlr-layer-shell-unstable-v1", "viewporter", "fractional-scale-v1"] }
 wayrs-utils = { version = "0.10", features = ["cursor", "shm_alloc", "seats"] }
 clap = { version = "4.3.23", default-features = false, features = ["derive", "std", "help"] }
+libc = "0.2.147"
 
 [profile.release]
 lto = "fat"

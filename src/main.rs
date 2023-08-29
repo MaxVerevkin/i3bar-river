@@ -17,14 +17,12 @@ mod text;
 mod utils;
 mod wm_info_provider;
 
-use std::io::ErrorKind;
-use std::os::unix::io::AsRawFd;
+use std::io::{self, ErrorKind};
+use std::os::fd::{AsRawFd, RawFd};
 use std::path::PathBuf;
 
 use clap::Parser;
-use nix::errno::Errno;
 use nix::fcntl::OFlag;
-use nix::poll::{poll, PollFd, PollFlags};
 use signal_hook::consts::*;
 use wayrs_client::{Connection, IoMode};
 
@@ -48,21 +46,10 @@ fn main() -> anyhow::Result<()> {
     let mut state = State::new(&mut conn, &globals, args.config.as_deref());
     conn.flush(IoMode::Blocking)?;
 
-    let mut fds = Vec::with_capacity(3);
-    fds.push(PollFd::new(conn.as_raw_fd(), PollFlags::POLLIN));
-    fds.push(PollFd::new(sig_read, PollFlags::POLLIN));
-    if let Some(cmd_fd) = state.status_cmd_fd() {
-        fds.push(PollFd::new(cmd_fd, PollFlags::POLLIN));
-    }
-
     loop {
-        match poll(&mut fds, -1) {
-            Ok(_) => (),
-            Err(Errno::EINTR) => continue,
-            Err(e) => bail!(e),
-        }
+        let poll = Poll::new(conn.as_raw_fd(), sig_read, state.status_cmd_fd())?;
 
-        if fds[0].any().unwrap_or(false) {
+        if poll.wayland {
             match conn.recv_events(IoMode::NonBlocking) {
                 Ok(()) => {
                     conn.dispatch_events(&mut state);
@@ -73,31 +60,68 @@ fn main() -> anyhow::Result<()> {
             }
         }
 
-        if fds[1].any().unwrap_or(false) {
-            nix::unistd::read(sig_read, &mut [0; 1])?;
+        if poll.signal {
+            nix::unistd::read(sig_read.as_raw_fd(), &mut [0; 1])?;
             state.toggle_visibility(&mut conn);
             conn.flush(IoMode::Blocking)?;
         }
 
-        if fds.len() > 2 && fds[2].any().unwrap_or(false) {
-            match state
-                .shared_state
-                .status_cmd
-                .as_mut()
-                .unwrap()
-                .receive_blocks()
-            {
-                Ok(None) => (),
-                Ok(Some(blocks)) => {
-                    state.set_blocks(&mut conn, blocks);
-                    conn.flush(IoMode::Blocking)?;
+        if let Some(status_cmd) = &mut state.shared_state.status_cmd {
+            if poll.cmd {
+                match status_cmd.receive_blocks() {
+                    Ok(None) => (),
+                    Ok(Some(blocks)) => {
+                        state.set_blocks(&mut conn, blocks);
+                        conn.flush(IoMode::Blocking)?;
+                    }
+                    Err(e) => {
+                        let _ = state.shared_state.status_cmd.take().unwrap().child.kill();
+                        state.set_error(&mut conn, e);
+                        conn.flush(IoMode::Blocking)?;
+                    }
                 }
-                Err(e) => {
-                    let _ = state.shared_state.status_cmd.take().unwrap().child.kill();
-                    fds.pop().unwrap();
-                    state.set_error(&mut conn, e);
-                    conn.flush(IoMode::Blocking)?;
+            }
+        }
+    }
+}
+
+struct Poll {
+    wayland: bool,
+    signal: bool,
+    cmd: bool,
+}
+
+impl Poll {
+    fn new(wayland: RawFd, signal: RawFd, cmd: Option<RawFd>) -> io::Result<Self> {
+        let mut fds = [libc::pollfd {
+            fd: 0,
+            events: libc::POLLIN,
+            revents: 0,
+        }; 3];
+
+        fds[0].fd = wayland.as_raw_fd();
+        fds[1].fd = signal.as_raw_fd();
+        fds[2].fd = cmd.map_or(0, |cmd| cmd.as_raw_fd());
+
+        loop {
+            // nix' (0.27) poll() implementation is hard to work with because of the lifetimes. In
+            // particular, it makes reusing the same buffer across poll()s very hard. It is better
+            // to just call directly into the libc at this point, it's not that hard. At least it is
+            // safer that trying to trick nix by using `BorrowedFd::borrow_raw()`.
+            let result =
+                unsafe { libc::poll(fds.as_mut_ptr(), if cmd.is_some() { 3 } else { 2 }, -1) };
+
+            if result == -1 {
+                let err = io::Error::last_os_error();
+                if err.kind() != ErrorKind::Interrupted {
+                    return Err(io::Error::last_os_error());
                 }
+            } else {
+                return Ok(Self {
+                    wayland: fds[0].revents & libc::POLLIN != 0,
+                    signal: fds[1].revents & libc::POLLIN != 0,
+                    cmd: fds[2].revents & libc::POLLIN != 0,
+                });
             }
         }
     }

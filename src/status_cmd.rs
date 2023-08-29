@@ -1,11 +1,8 @@
-use std::io::{BufWriter, Write};
+use std::io::{self, BufWriter, ErrorKind, Write};
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 
 use anyhow::Result;
-
-use nix::errno::Errno;
-use nix::libc;
 
 use crate::i3bar_protocol::{Block, Event, Protocol};
 
@@ -44,7 +41,7 @@ impl StatusCmd {
         match read_to_vec(self.output.as_raw_fd(), &mut self.buf) {
             Ok(0) => bail!("status command exited"),
             Ok(_n) => (),
-            Err(Errno::EAGAIN) => return Ok(None),
+            Err(e) if e.kind() == ErrorKind::WouldBlock => return Ok(None),
             Err(e) => bail!(e),
         }
 
@@ -68,7 +65,7 @@ impl StatusCmd {
 /// Read from a raw file descriptor to the vector.
 ///
 /// Appends data at the end of the buffer. Resizes vector as needed.
-pub fn read_to_vec(fd: RawFd, buf: &mut Vec<u8>) -> nix::Result<usize> {
+pub fn read_to_vec(fd: RawFd, buf: &mut Vec<u8>) -> io::Result<usize> {
     if buf.capacity() - buf.len() < 1024 {
         buf.reserve(buf.capacity().max(1024));
     }
@@ -81,7 +78,11 @@ pub fn read_to_vec(fd: RawFd, buf: &mut Vec<u8>) -> nix::Result<usize> {
         )
     };
 
-    let read = Errno::result(res)? as usize;
+    if res == -1 {
+        return Err(io::Error::last_os_error());
+    }
+
+    let read = res as usize;
     unsafe { buf.set_len(buf.len() + read) };
 
     Ok(read)
