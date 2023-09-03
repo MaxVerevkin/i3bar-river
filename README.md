@@ -18,10 +18,6 @@ A list of things that are missing (for now):
 - Support for rounded corners
 - Show/hide with `pkill -SIGUSR1 i3bar-river`
 
-## Hyprland support
-
-Hyprland/wlr_ext_workspaces support is experimental and is behind `hyprland` feature flag. Build with `-F hyprland` to enable it.
-
 ## Installation
 
 [![Packaging status](https://repology.org/badge/vertical-allrepos/i3bar-river.svg)](https://repology.org/project/i3bar-river/versions)

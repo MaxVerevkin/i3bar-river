@@ -19,9 +19,4 @@ impl SharedState {
     pub fn get_river(&mut self) -> Option<&mut wm_info_provider::RiverInfoProvider> {
         self.wm_info_provider.as_mut()?.as_any().downcast_mut()
     }
-
-    #[cfg(feature = "hyprland")]
-    pub fn get_ewu(&mut self) -> Option<&mut wm_info_provider::ExtWorkspaceUnstable> {
-        self.wm_info_provider.as_mut()?.as_any().downcast_mut()
-    }
 }
