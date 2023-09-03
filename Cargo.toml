@@ -8,9 +8,6 @@ edition = "2021"
 license = "GPL-3.0-only"
 authors = ["MaxVerevkin <maxxverrr@gmail.com>"]
 
-[features]
-hyprland = []
-
 [dependencies]
 anyhow = "1"
 memchr = "2"

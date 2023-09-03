@@ -8,11 +8,6 @@ use crate::pointer_btn::PointerBtn;
 use crate::protocol::*;
 use crate::state::State;
 
-#[cfg(feature = "hyprland")]
-mod ext_workspace_unstable;
-#[cfg(feature = "hyprland")]
-pub use ext_workspace_unstable::*;
-
 mod river;
 pub use river::*;
 
@@ -43,11 +38,6 @@ pub fn bind(
 ) -> Option<Box<dyn WmInfoProvider>> {
     if let Some(river) = RiverInfoProvider::bind(conn, globals, config) {
         return Some(Box::new(river));
-    }
-
-    #[cfg(feature = "hyprland")]
-    if let Some(ext_wp_u) = ExtWorkspaceUnstable::bind(conn, globals) {
-        return Some(Box::new(ext_wp_u));
     }
 
     None
