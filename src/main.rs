@@ -45,10 +45,9 @@ fn main() -> anyhow::Result<()> {
     signal_hook::low_level::pipe::register(SIGUSR1, sig_write)?;
 
     let (mut conn, globals) = Connection::connect_and_collect_globals()?;
-    let state = State::new(&mut conn, &globals, args.config.as_deref());
-    conn.flush(IoMode::Blocking)?;
-
     let mut el = EventLoop::<(Connection<State>, State)>::new();
+    let state = State::new(&mut conn, &globals, &mut el, args.config.as_deref());
+    conn.flush(IoMode::Blocking)?;
 
     el.register_with_fd(sig_read, move |(conn, state)| {
         nix::unistd::read(sig_read, &mut [0; 1])?;

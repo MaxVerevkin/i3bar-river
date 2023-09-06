@@ -9,9 +9,16 @@ pub struct Output {
     pub wl: WlOutput,
     pub reg_name: u32,
     pub scale: u32,
+    pub name: String,
 }
 
-impl Output {
+pub struct PendingOutput {
+    pub wl: WlOutput,
+    pub reg_name: u32,
+    pub scale: u32,
+}
+
+impl PendingOutput {
     pub fn bind(conn: &mut Connection<State>, global: &Global) -> Self {
         Self {
             wl: global
@@ -21,7 +28,9 @@ impl Output {
             scale: 1,
         }
     }
+}
 
+impl Output {
     pub fn destroy(self, conn: &mut Connection<State>) {
         self.wl.release(conn);
     }
@@ -37,11 +46,14 @@ fn wl_output_cb(ctx: EventCtx<State, WlOutput>) {
                 .position(|o| o.wl == ctx.proxy)
                 .unwrap();
             let output = ctx.state.pending_outputs.swap_remove(i);
-            ctx.state.register_output(
-                ctx.conn,
-                output,
-                name.to_str().expect("invalid output name"),
-            );
+            let name = String::from_utf8(name.into_bytes()).expect("invalid output name");
+            let output = Output {
+                wl: output.wl,
+                reg_name: output.reg_name,
+                scale: output.scale,
+                name,
+            };
+            ctx.state.register_output(ctx.conn, output);
         }
         wl_output::Event::Scale(scale) => {
             if let Some(bar) = ctx

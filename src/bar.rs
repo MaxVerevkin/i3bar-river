@@ -32,7 +32,7 @@ pub struct Bar {
     tags: Vec<Tag>,
     layout_name: Option<String>,
     mode_name: Option<String>,
-    tags_btns: ButtonManager<String>,
+    tags_btns: ButtonManager<u32>,
     tags_computed: Vec<(ColorPair, ComputedText)>,
     layout_name_computed: Option<ComputedText>,
     mode_computed: Option<ComputedText>,
@@ -119,9 +119,9 @@ impl Bar {
         x: f64,
         _y: f64,
     ) -> anyhow::Result<()> {
-        if let Some(tag) = self.tags_btns.click(x) {
+        if let Some(tag_id) = self.tags_btns.click(x) {
             if let Some(wm) = &mut ss.wm_info_provider {
-                wm.click_on_tag(conn, self.output.wl, seat, tag, button);
+                wm.click_on_tag(conn, self.output.wl, seat, *tag_id, button);
             }
         } else if let Some((name, instance)) = self.blocks_btns.click(x) {
             if let Some(cmd) = &mut ss.status_cmd {
@@ -212,8 +212,7 @@ impl Bar {
                     continue;
                 };
                 let comp = compute_tag_label(&tag.name, &ss.config);
-                self.tags_btns
-                    .push(offset_left, comp.width, tag.name.clone());
+                self.tags_btns.push(offset_left, comp.width, tag.id);
                 offset_left += comp.width;
                 self.tags_computed.push((ColorPair { bg, fg }, comp));
             }

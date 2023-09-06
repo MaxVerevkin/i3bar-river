@@ -1,10 +1,11 @@
-use std::io::{self, BufWriter, ErrorKind, Write};
-use std::os::unix::io::{AsRawFd, RawFd};
+use std::io::{BufWriter, ErrorKind, Write};
+use std::os::unix::io::AsRawFd;
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 
 use anyhow::Result;
 
 use crate::i3bar_protocol::{Block, Event, Protocol};
+use crate::utils::read_to_vec;
 
 #[derive(Debug)]
 pub struct StatusCmd {
@@ -38,7 +39,7 @@ impl StatusCmd {
     }
 
     pub fn receive_blocks(&mut self) -> Result<Option<Vec<Block>>> {
-        match read_to_vec(self.output.as_raw_fd(), &mut self.buf) {
+        match read_to_vec(&mut self.output, &mut self.buf) {
             Ok(0) => bail!("status command exited"),
             Ok(_n) => (),
             Err(e) if e.kind() == ErrorKind::WouldBlock => return Ok(None),
@@ -60,30 +61,4 @@ impl StatusCmd {
         }
         Ok(())
     }
-}
-
-/// Read from a raw file descriptor to the vector.
-///
-/// Appends data at the end of the buffer. Resizes vector as needed.
-pub fn read_to_vec(fd: RawFd, buf: &mut Vec<u8>) -> io::Result<usize> {
-    if buf.capacity() - buf.len() < 1024 {
-        buf.reserve(buf.capacity().max(1024));
-    }
-
-    let res = unsafe {
-        libc::read(
-            fd,
-            buf.as_mut_ptr().add(buf.len()) as *mut libc::c_void,
-            (buf.capacity() - buf.len()) as libc::size_t,
-        )
-    };
-
-    if res == -1 {
-        return Err(io::Error::last_os_error());
-    }
-
-    let read = res as usize;
-    unsafe { buf.set_len(buf.len() + read) };
-
-    Ok(read)
 }

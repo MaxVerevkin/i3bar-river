@@ -78,12 +78,13 @@ impl WmInfoProvider for RiverInfoProvider {
         output_status.status.destroy(conn);
     }
 
-    fn get_tags(&self, output: WlOutput) -> Vec<Tag> {
-        let Some(status) = self.output_statuses.iter().find(|s| s.output == output) else {
+    fn get_tags(&self, output: &Output) -> Vec<Tag> {
+        let Some(status) = self.output_statuses.iter().find(|s| s.output == output.wl) else {
             return Vec::new();
         };
         (1..=self.max_tag)
             .map(|tag| Tag {
+                id: tag as u32,
                 name: tag.to_string(),
                 is_focused: status.focused_tags & (1 << (tag - 1)) != 0,
                 is_active: status.active_tags & (1 << (tag - 1)) != 0,
@@ -92,12 +93,15 @@ impl WmInfoProvider for RiverInfoProvider {
             .collect()
     }
 
-    fn get_layout_name(&self, output: WlOutput) -> Option<String> {
-        let status = self.output_statuses.iter().find(|s| s.output == output)?;
+    fn get_layout_name(&self, output: &Output) -> Option<String> {
+        let status = self
+            .output_statuses
+            .iter()
+            .find(|s| s.output == output.wl)?;
         status.layout_name.clone()
     }
 
-    fn get_mode_name(&self, _output: WlOutput) -> Option<String> {
+    fn get_mode_name(&self, _output: &Output) -> Option<String> {
         self.seat_status.mode.clone()
     }
 
@@ -106,18 +110,19 @@ impl WmInfoProvider for RiverInfoProvider {
         conn: &mut Connection<State>,
         _output: WlOutput,
         seat: WlSeat,
-        tag: &str,
+        tag_id: u32,
         btn: PointerBtn,
     ) {
-        let tag: u32 = tag.parse().unwrap();
         let cmd = match btn {
             PointerBtn::Left => cstr!("set-focused-tags"),
             PointerBtn::Right => cstr!("toggle-focused-tags"),
             _ => return,
         };
         self.control.add_argument(conn, cmd.to_owned());
-        self.control
-            .add_argument(conn, CString::new((1u32 << (tag - 1)).to_string()).unwrap());
+        self.control.add_argument(
+            conn,
+            CString::new((1u32 << (tag_id - 1)).to_string()).unwrap(),
+        );
         self.control
             .run_command_with_cb(conn, seat, river_command_cb);
     }

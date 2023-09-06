@@ -4,9 +4,11 @@ use std::os::fd::RawFd;
 
 use anyhow::Result;
 
+type Callback<D> = Box<dyn FnMut(&mut D) -> Result<Action>>;
+
 pub struct EventLoop<D> {
     pollfds: Vec<libc::pollfd>,
-    cbs: HashMap<RawFd, Box<dyn FnMut(&mut D) -> Result<Action>>>,
+    cbs: HashMap<RawFd, Callback<D>>,
 }
 
 pub enum Action {

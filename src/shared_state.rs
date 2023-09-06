@@ -19,4 +19,8 @@ impl SharedState {
     pub fn get_river(&mut self) -> Option<&mut wm_info_provider::RiverInfoProvider> {
         self.wm_info_provider.as_mut()?.as_any().downcast_mut()
     }
+
+    pub fn get_hyprland(&mut self) -> Option<&mut wm_info_provider::Hyprland> {
+        self.wm_info_provider.as_mut()?.as_any().downcast_mut()
+    }
 }

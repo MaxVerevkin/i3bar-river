@@ -1,7 +1,37 @@
 //! Some usefull functions
 
+use std::io;
+use std::os::fd::{AsFd, AsRawFd};
+
 use serde::Deserialize;
 use serde_json::{Deserializer, Error as JsonError};
+
+/// Read from a raw file descriptor to the vector.
+///
+/// Appends data at the end of the buffer. Resizes vector as needed.
+#[allow(clippy::needless_pass_by_ref_mut)]
+pub fn read_to_vec(fd: &mut impl AsFd, buf: &mut Vec<u8>) -> io::Result<usize> {
+    if buf.capacity() - buf.len() < 1024 {
+        buf.reserve(buf.capacity().max(1024));
+    }
+
+    let res = unsafe {
+        libc::read(
+            fd.as_fd().as_raw_fd(),
+            buf.as_mut_ptr().add(buf.len()) as *mut libc::c_void,
+            (buf.capacity() - buf.len()) as libc::size_t,
+        )
+    };
+
+    if res == -1 {
+        return Err(io::Error::last_os_error());
+    }
+
+    let read = res as usize;
+    unsafe { buf.set_len(buf.len() + read) };
+
+    Ok(read)
+}
 
 /// Retuns (`last_line`, `remaining`). See tests for examples.
 pub fn last_line(s: &[u8]) -> Option<(&[u8], &[u8])> {

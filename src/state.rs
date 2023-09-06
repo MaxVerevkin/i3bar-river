@@ -1,5 +1,6 @@
 use crate::blocks_cache::BlocksCache;
-use crate::output::Output;
+use crate::event_loop::EventLoop;
+use crate::output::{Output, PendingOutput};
 use crate::protocol::*;
 use crate::wm_info_provider;
 
@@ -9,8 +10,7 @@ use std::path::Path;
 
 use wayrs_client::global::{GlobalExt, Globals, GlobalsExt};
 use wayrs_client::proxy::Proxy;
-use wayrs_client::Connection;
-use wayrs_client::EventCtx;
+use wayrs_client::{Connection, EventCtx};
 use wayrs_utils::cursor::{CursorImage, CursorShape, CursorTheme, ThemedPointer};
 use wayrs_utils::seats::{SeatHandler, Seats};
 use wayrs_utils::shm_alloc::ShmAlloc;
@@ -30,7 +30,7 @@ pub struct State {
     pointers: Vec<Pointer>,
 
     // Outputs that haven't yet advertised their names
-    pub pending_outputs: Vec<Output>,
+    pub pending_outputs: Vec<PendingOutput>,
 
     pub hidden: bool,
     pub bars: Vec<Bar>,
@@ -54,7 +54,12 @@ struct Pointer {
 }
 
 impl State {
-    pub fn new(conn: &mut Connection<Self>, globals: &Globals, config_path: Option<&Path>) -> Self {
+    pub fn new(
+        conn: &mut Connection<Self>,
+        globals: &Globals,
+        event_loop: &mut EventLoop<(Connection<Self>, Self)>,
+        config_path: Option<&Path>,
+    ) -> Self {
         let mut error = Ok(());
 
         let config = Config::new(config_path)
@@ -75,7 +80,7 @@ impl State {
             .map_err(|e| error = Err(e.into()))
             .ok();
 
-        let wm_info_provider = wm_info_provider::bind(conn, globals, &config.wm);
+        let wm_info_provider = wm_info_provider::bind(conn, globals, event_loop, &config.wm);
 
         let mut this = Self {
             wl_compositor,
@@ -89,7 +94,7 @@ impl State {
             pending_outputs: globals
                 .iter()
                 .filter(|g| g.is::<WlOutput>())
-                .map(|g| Output::bind(conn, g))
+                .map(|g| PendingOutput::bind(conn, g))
                 .collect(),
 
             hidden: false,
@@ -144,8 +149,8 @@ impl State {
             .map(|cmd| cmd.output.as_raw_fd())
     }
 
-    pub fn register_output(&mut self, conn: &mut Connection<Self>, output: Output, name: &str) {
-        if !self.shared_state.config.output_enabled(name) {
+    pub fn register_output(&mut self, conn: &mut Connection<Self>, output: Output) {
+        if !self.shared_state.config.output_enabled(&output.name) {
             return;
         }
 
@@ -154,6 +159,10 @@ impl State {
         }
 
         let mut bar = Bar::new(conn, self, output);
+
+        if let Some(wm) = &self.shared_state.wm_info_provider {
+            bar.set_tags(wm.get_tags(&bar.output));
+        }
 
         if !self.hidden {
             bar.show(conn, &self.shared_state);
@@ -203,12 +212,7 @@ impl State {
 
     pub fn tags_updated(&mut self, conn: &mut Connection<Self>, output: Option<WlOutput>) {
         self.for_each_bar(output, |bar, ss| {
-            bar.set_tags(
-                ss.wm_info_provider
-                    .as_mut()
-                    .unwrap()
-                    .get_tags(bar.output.wl),
-            );
+            bar.set_tags(ss.wm_info_provider.as_mut().unwrap().get_tags(&bar.output));
             bar.request_frame(conn);
         });
     }
@@ -219,7 +223,7 @@ impl State {
                 ss.wm_info_provider
                     .as_mut()
                     .unwrap()
-                    .get_layout_name(bar.output.wl),
+                    .get_layout_name(&bar.output),
             );
             bar.request_frame(conn);
         });
@@ -231,7 +235,7 @@ impl State {
                 ss.wm_info_provider
                     .as_mut()
                     .unwrap()
-                    .get_mode_name(bar.output.wl),
+                    .get_mode_name(&bar.output),
             );
             bar.request_frame(conn);
         });
@@ -270,7 +274,9 @@ impl SeatHandler for State {
 fn wl_registry_cb(conn: &mut Connection<State>, state: &mut State, event: &wl_registry::Event) {
     match event {
         wl_registry::Event::Global(global) if global.is::<WlOutput>() => {
-            state.pending_outputs.push(Output::bind(conn, global));
+            state
+                .pending_outputs
+                .push(PendingOutput::bind(conn, global));
         }
         wl_registry::Event::GlobalRemove(name) => {
             if let Some(bar_index) = state
