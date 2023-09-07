@@ -54,12 +54,12 @@ impl RiverInfoProvider {
 }
 
 impl WmInfoProvider for RiverInfoProvider {
-    fn new_ouput(&mut self, conn: &mut Connection<State>, output: WlOutput) {
+    fn new_ouput(&mut self, conn: &mut Connection<State>, output: &Output) {
         let status =
             self.status_manager
-                .get_river_output_status_with_cb(conn, output, output_status_cb);
+                .get_river_output_status_with_cb(conn, output.wl, output_status_cb);
         self.output_statuses.push(OutputStatus {
-            output,
+            output: output.wl,
             status,
             focused_tags: 0,
             urgent_tags: 0,
@@ -68,11 +68,11 @@ impl WmInfoProvider for RiverInfoProvider {
         });
     }
 
-    fn output_removed(&mut self, conn: &mut Connection<State>, output: WlOutput) {
+    fn output_removed(&mut self, conn: &mut Connection<State>, output: &Output) {
         let index = self
             .output_statuses
             .iter()
-            .position(|s| s.output == output)
+            .position(|s| s.output == output.wl)
             .unwrap();
         let output_status = self.output_statuses.swap_remove(index);
         output_status.status.destroy(conn);

@@ -45,21 +45,21 @@ fn main() -> anyhow::Result<()> {
     signal_hook::low_level::pipe::register(SIGUSR1, sig_write)?;
 
     let (mut conn, globals) = Connection::connect_and_collect_globals()?;
-    let mut el = EventLoop::<(Connection<State>, State)>::new();
-    let state = State::new(&mut conn, &globals, &mut el, args.config.as_deref());
+    let mut el = EventLoop::new();
+    let mut state = State::new(&mut conn, &globals, &mut el, args.config.as_deref());
     conn.flush(IoMode::Blocking)?;
 
-    el.register_with_fd(sig_read, move |(conn, state)| {
+    el.register_with_fd(sig_read, move |ctx| {
         nix::unistd::read(sig_read, &mut [0; 1])?;
-        state.toggle_visibility(conn);
+        ctx.state.toggle_visibility(ctx.conn);
         Ok(event_loop::Action::Keep)
     });
 
-    el.register_with_fd(conn.as_raw_fd(), |(conn, state)| {
-        match conn.recv_events(IoMode::NonBlocking) {
+    el.register_with_fd(conn.as_raw_fd(), |ctx| {
+        match ctx.conn.recv_events(IoMode::NonBlocking) {
             Ok(()) => {
-                conn.dispatch_events(state);
-                conn.flush(IoMode::Blocking)?;
+                ctx.conn.dispatch_events(ctx.state);
+                ctx.conn.flush(IoMode::Blocking)?;
             }
             Err(e) if e.kind() == ErrorKind::WouldBlock => (),
             Err(e) => bail!(e),
@@ -68,8 +68,9 @@ fn main() -> anyhow::Result<()> {
     });
 
     if let Some(fd) = state.status_cmd_fd() {
-        el.register_with_fd(fd, |(conn, state)| {
-            match state
+        el.register_with_fd(fd, |ctx| {
+            match ctx
+                .state
                 .shared_state
                 .status_cmd
                 .as_mut()
@@ -78,22 +79,28 @@ fn main() -> anyhow::Result<()> {
             {
                 Ok(None) => Ok(event_loop::Action::Keep),
                 Ok(Some(blocks)) => {
-                    state.set_blocks(conn, blocks);
-                    conn.flush(IoMode::Blocking)?;
+                    ctx.state.set_blocks(ctx.conn, blocks);
+                    ctx.conn.flush(IoMode::Blocking)?;
                     Ok(event_loop::Action::Keep)
                 }
                 Err(e) => {
-                    let _ = state.shared_state.status_cmd.take().unwrap().child.kill();
-                    state.set_error(conn, e);
-                    conn.flush(IoMode::Blocking)?;
+                    let _ = ctx
+                        .state
+                        .shared_state
+                        .status_cmd
+                        .take()
+                        .unwrap()
+                        .child
+                        .kill();
+                    ctx.state.set_error(ctx.conn, e);
+                    ctx.conn.flush(IoMode::Blocking)?;
                     Ok(event_loop::Action::Unregister)
                 }
             }
         });
     }
 
-    let mut el_state = (conn, state);
     loop {
-        el.run(&mut el_state)?;
+        el.run(&mut conn, &mut state)?;
     }
 }

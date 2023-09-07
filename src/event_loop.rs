@@ -3,12 +3,20 @@ use std::io;
 use std::os::fd::RawFd;
 
 use anyhow::Result;
+use wayrs_client::Connection;
 
-type Callback<D> = Box<dyn FnMut(&mut D) -> Result<Action>>;
+use crate::state::State;
 
-pub struct EventLoop<D> {
+type Callback = Box<dyn FnMut(EventLoopCtx) -> Result<Action>>;
+
+pub struct EventLoopCtx<'a> {
+    pub conn: &'a mut Connection<State>,
+    pub state: &'a mut State,
+}
+
+pub struct EventLoop {
     pollfds: Vec<libc::pollfd>,
-    cbs: HashMap<RawFd, Callback<D>>,
+    cbs: HashMap<RawFd, Callback>,
 }
 
 pub enum Action {
@@ -16,7 +24,7 @@ pub enum Action {
     Unregister,
 }
 
-impl<D> EventLoop<D> {
+impl EventLoop {
     pub fn new() -> Self {
         Self {
             pollfds: Vec::new(),
@@ -26,12 +34,12 @@ impl<D> EventLoop<D> {
 
     pub fn register_with_fd<F>(&mut self, fd: RawFd, cb: F)
     where
-        F: FnMut(&mut D) -> Result<Action> + 'static,
+        F: FnMut(EventLoopCtx) -> Result<Action> + 'static,
     {
         self.cbs.insert(fd, Box::new(cb));
     }
 
-    pub fn run(&mut self, state: &mut D) -> Result<()> {
+    pub fn run(&mut self, conn: &mut Connection<State>, state: &mut State) -> Result<()> {
         if self.cbs.is_empty() {
             return Ok(());
         }
@@ -61,7 +69,7 @@ impl<D> EventLoop<D> {
         for fd in &self.pollfds {
             if fd.revents != 0 {
                 let mut cb = self.cbs.remove(&fd.fd).unwrap();
-                match cb(state)? {
+                match cb(EventLoopCtx { conn, state })? {
                     Action::Keep => {
                         self.cbs.insert(fd.fd, cb);
                     }

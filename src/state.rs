@@ -57,7 +57,7 @@ impl State {
     pub fn new(
         conn: &mut Connection<Self>,
         globals: &Globals,
-        event_loop: &mut EventLoop<(Connection<Self>, Self)>,
+        event_loop: &mut EventLoop,
         config_path: Option<&Path>,
     ) -> Self {
         let mut error = Ok(());
@@ -80,7 +80,10 @@ impl State {
             .map_err(|e| error = Err(e.into()))
             .ok();
 
-        let wm_info_provider = wm_info_provider::bind(conn, globals, event_loop, &config.wm);
+        let wm_info_provider = wm_info_provider::bind(conn, globals, &config.wm);
+        if let Some(wm) = &wm_info_provider {
+            wm.register(event_loop);
+        }
 
         let mut this = Self {
             wl_compositor,
@@ -155,7 +158,7 @@ impl State {
         }
 
         if let Some(wm) = &mut self.shared_state.wm_info_provider {
-            wm.new_ouput(conn, output.wl);
+            wm.new_ouput(conn, &output);
         }
 
         let mut bar = Bar::new(conn, self, output);
@@ -174,7 +177,7 @@ impl State {
     pub fn drop_bar(&mut self, conn: &mut Connection<Self>, bar_index: usize) {
         let bar = self.bars.swap_remove(bar_index);
         if let Some(wm) = &mut self.shared_state.wm_info_provider {
-            wm.output_removed(conn, bar.output.wl);
+            wm.output_removed(conn, &bar.output);
         }
         bar.destroy(conn);
     }

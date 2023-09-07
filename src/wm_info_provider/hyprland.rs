@@ -17,40 +17,30 @@ pub struct Hyprland {
 }
 
 impl Hyprland {
-    pub fn new(event_loop: &mut EventLoop<(Connection<State>, State)>) -> Option<Self> {
+    pub fn new() -> Option<Self> {
         let his = std::env::var("HYPRLAND_INSTANCE_SIGNATURE").ok()?;
         let ipc = Ipc::new(&his).ok()?;
-        let active_id = ipc.query_json::<IpcWorkspace>("j/activeworkspace").ok()?.id;
-        let mut this = Self {
+        Some(Self {
+            workspaces: ipc.query_sorted_workspaces().ok()?,
+            active_id: ipc.query_json::<IpcWorkspace>("j/activeworkspace").ok()?.id,
             ipc,
-            workspaces: Vec::new(),
-            active_id,
-        };
-        this.fetch_workspaces().ok()?;
-        event_loop.register_with_fd(this.ipc.sock2.as_raw_fd(), |state| {
-            match hyprland_cb(&mut state.0, &mut state.1) {
-                Ok(()) => Ok(event_loop::Action::Keep),
-                Err(e) => {
-                    state.1.set_error(&mut state.0, e);
-                    state.0.flush(IoMode::Blocking)?;
-                    Ok(event_loop::Action::Unregister)
-                }
-            }
-        });
-        Some(this)
-    }
-
-    fn fetch_workspaces(&mut self) -> io::Result<()> {
-        self.workspaces = self.ipc.query_json::<Vec<IpcWorkspace>>("j/workspaces")?;
-        self.workspaces.sort_unstable_by_key(|x| x.id);
-        Ok(())
+        })
     }
 }
 
 impl WmInfoProvider for Hyprland {
-    fn new_ouput(&mut self, _: &mut Connection<State>, _: WlOutput) {}
-
-    fn output_removed(&mut self, _: &mut Connection<State>, _: WlOutput) {}
+    fn register(&self, event_loop: &mut EventLoop) {
+        event_loop.register_with_fd(self.ipc.sock2.as_raw_fd(), |ctx| {
+            match hyprland_cb(ctx.conn, ctx.state) {
+                Ok(()) => Ok(event_loop::Action::Keep),
+                Err(e) => {
+                    ctx.state.set_error(ctx.conn, e);
+                    ctx.conn.flush(IoMode::Blocking)?;
+                    Ok(event_loop::Action::Unregister)
+                }
+            }
+        });
+    }
 
     fn get_tags(&self, output: &Output) -> Vec<Tag> {
         self.workspaces
@@ -64,14 +54,6 @@ impl WmInfoProvider for Hyprland {
                 is_urgent: false,
             })
             .collect()
-    }
-
-    fn get_layout_name(&self, _: &Output) -> Option<String> {
-        None
-    }
-
-    fn get_mode_name(&self, _: &Output) -> Option<String> {
-        None
     }
 
     fn click_on_tag(
@@ -99,10 +81,12 @@ fn hyprland_cb(conn: &mut Connection<State>, state: &mut State) -> io::Result<()
         match hyprland.ipc.next_event() {
             Ok(event) => {
                 if let Some(active_ws) = event.strip_prefix("workspace>>") {
-                    hyprland.active_id = active_ws.parse().unwrap();
+                    hyprland.active_id = active_ws
+                        .parse()
+                        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
                     updated = true;
                 } else if event.contains("workspace>>") {
-                    hyprland.fetch_workspaces()?;
+                    hyprland.workspaces = hyprland.ipc.query_sorted_workspaces()?;
                     updated = true;
                 }
             }
@@ -147,6 +131,12 @@ impl Ipc {
         sock.write_all(cmd.as_bytes())?;
         sock.flush()?;
         serde_json::from_reader(&mut sock).map_err(Into::into)
+    }
+
+    fn query_sorted_workspaces(&self) -> io::Result<Vec<IpcWorkspace>> {
+        let mut workspaces = self.query_json::<Vec<IpcWorkspace>>("j/workspaces")?;
+        workspaces.sort_unstable_by_key(|x| x.id);
+        Ok(workspaces)
     }
 
     fn next_event(&mut self) -> io::Result<String> {

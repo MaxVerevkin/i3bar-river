@@ -17,12 +17,18 @@ mod hyprland;
 pub use hyprland::*;
 
 pub trait WmInfoProvider {
-    fn new_ouput(&mut self, conn: &mut Connection<State>, output: WlOutput);
-    fn output_removed(&mut self, conn: &mut Connection<State>, output: WlOutput);
+    fn register(&self, _: &mut EventLoop) {}
+
+    fn new_ouput(&mut self, _: &mut Connection<State>, _: &Output) {}
+    fn output_removed(&mut self, _: &mut Connection<State>, _: &Output) {}
 
     fn get_tags(&self, output: &Output) -> Vec<Tag>;
-    fn get_layout_name(&self, output: &Output) -> Option<String>;
-    fn get_mode_name(&self, output: &Output) -> Option<String>;
+    fn get_layout_name(&self, _: &Output) -> Option<String> {
+        None
+    }
+    fn get_mode_name(&self, _: &Output) -> Option<String> {
+        None
+    }
 
     fn click_on_tag(
         &mut self,
@@ -39,14 +45,13 @@ pub trait WmInfoProvider {
 pub fn bind(
     conn: &mut Connection<State>,
     globals: &Globals,
-    event_loop: &mut EventLoop<(Connection<State>, State)>,
     config: &WmConfig,
 ) -> Option<Box<dyn WmInfoProvider>> {
     if let Some(river) = RiverInfoProvider::bind(conn, globals, config) {
         return Some(Box::new(river));
     }
 
-    if let Some(hyprland) = Hyprland::new(event_loop) {
+    if let Some(hyprland) = Hyprland::new() {
         return Some(Box::new(hyprland));
     }
 
