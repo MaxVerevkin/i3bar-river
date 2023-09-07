@@ -10,13 +10,13 @@ use crate::event_loop::{self, EventLoop};
 use crate::state::State;
 use crate::utils::read_to_vec;
 
-pub struct Hyprland {
+pub struct HyprlandInfoProvider {
     ipc: Ipc,
     workspaces: Vec<IpcWorkspace>,
     active_id: u32,
 }
 
-impl Hyprland {
+impl HyprlandInfoProvider {
     pub fn new() -> Option<Self> {
         let his = std::env::var("HYPRLAND_INSTANCE_SIGNATURE").ok()?;
         let ipc = Ipc::new(&his).ok()?;
@@ -28,7 +28,7 @@ impl Hyprland {
     }
 }
 
-impl WmInfoProvider for Hyprland {
+impl WmInfoProvider for HyprlandInfoProvider {
     fn register(&self, event_loop: &mut EventLoop) {
         event_loop.register_with_fd(self.ipc.sock2.as_raw_fd(), |ctx| {
             match hyprland_cb(ctx.conn, ctx.state) {

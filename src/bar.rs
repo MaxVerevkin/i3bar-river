@@ -120,9 +120,8 @@ impl Bar {
         _y: f64,
     ) -> anyhow::Result<()> {
         if let Some(tag_id) = self.tags_btns.click(x) {
-            if let Some(wm) = &mut ss.wm_info_provider {
-                wm.click_on_tag(conn, self.output.wl, seat, *tag_id, button);
-            }
+            ss.wm_info_provider
+                .click_on_tag(conn, self.output.wl, seat, *tag_id, button);
         } else if let Some((name, instance)) = self.blocks_btns.click(x) {
             if let Some(cmd) = &mut ss.status_cmd {
                 cmd.send_click_event(&i3bar_protocol::Event {

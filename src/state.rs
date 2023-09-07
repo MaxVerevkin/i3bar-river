@@ -81,9 +81,7 @@ impl State {
             .ok();
 
         let wm_info_provider = wm_info_provider::bind(conn, globals, &config.wm);
-        if let Some(wm) = &wm_info_provider {
-            wm.register(event_loop);
-        }
+        wm_info_provider.register(event_loop);
 
         let mut this = Self {
             wl_compositor,
@@ -157,15 +155,11 @@ impl State {
             return;
         }
 
-        if let Some(wm) = &mut self.shared_state.wm_info_provider {
-            wm.new_ouput(conn, &output);
-        }
+        self.shared_state.wm_info_provider.new_ouput(conn, &output);
 
         let mut bar = Bar::new(conn, self, output);
 
-        if let Some(wm) = &self.shared_state.wm_info_provider {
-            bar.set_tags(wm.get_tags(&bar.output));
-        }
+        bar.set_tags(self.shared_state.wm_info_provider.get_tags(&bar.output));
 
         if !self.hidden {
             bar.show(conn, &self.shared_state);
@@ -176,9 +170,9 @@ impl State {
 
     pub fn drop_bar(&mut self, conn: &mut Connection<Self>, bar_index: usize) {
         let bar = self.bars.swap_remove(bar_index);
-        if let Some(wm) = &mut self.shared_state.wm_info_provider {
-            wm.output_removed(conn, &bar.output);
-        }
+        self.shared_state
+            .wm_info_provider
+            .output_removed(conn, &bar.output);
         bar.destroy(conn);
     }
 
@@ -215,31 +209,21 @@ impl State {
 
     pub fn tags_updated(&mut self, conn: &mut Connection<Self>, output: Option<WlOutput>) {
         self.for_each_bar(output, |bar, ss| {
-            bar.set_tags(ss.wm_info_provider.as_mut().unwrap().get_tags(&bar.output));
+            bar.set_tags(ss.wm_info_provider.get_tags(&bar.output));
             bar.request_frame(conn);
         });
     }
 
     pub fn layout_name_updated(&mut self, conn: &mut Connection<Self>, output: Option<WlOutput>) {
         self.for_each_bar(output, |bar, ss| {
-            bar.set_layout_name(
-                ss.wm_info_provider
-                    .as_mut()
-                    .unwrap()
-                    .get_layout_name(&bar.output),
-            );
+            bar.set_layout_name(ss.wm_info_provider.get_layout_name(&bar.output));
             bar.request_frame(conn);
         });
     }
 
     pub fn mode_name_updated(&mut self, conn: &mut Connection<Self>, output: Option<WlOutput>) {
         self.for_each_bar(output, |bar, ss| {
-            bar.set_mode_name(
-                ss.wm_info_provider
-                    .as_mut()
-                    .unwrap()
-                    .get_mode_name(&bar.output),
-            );
+            bar.set_mode_name(ss.wm_info_provider.get_mode_name(&bar.output));
             bar.request_frame(conn);
         });
     }
