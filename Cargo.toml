@@ -19,7 +19,7 @@ signal-hook = { version = "0.3", default-features = false }
 toml = { version = "0.8", default-features = false, features = ["parse"] }
 wayrs-client = "0.12" 
 wayrs-protocols = { version = "0.12", features = ["wlr-layer-shell-unstable-v1", "viewporter", "fractional-scale-v1"] }
-wayrs-utils = { version = "0.11", features = ["cursor", "shm_alloc", "seats"] }
+wayrs-utils = { version = "0.12", features = ["cursor", "shm_alloc", "seats"] }
 clap = { version = "4.3.23", default-features = false, features = ["derive", "std", "help"] }
 libc = "0.2.147"
 
