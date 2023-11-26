@@ -87,13 +87,13 @@ impl Bar {
     }
 
     pub fn destroy(self, conn: &mut Connection<State>) {
-        self.output.destroy(conn);
-        self.surface.destroy(conn);
         self.layer_surface.destroy(conn);
         self.viewport.destroy(conn);
         if let Some(fs) = self.fractional_scale {
             fs.destroy(conn);
         }
+        self.surface.destroy(conn);
+        self.output.destroy(conn);
     }
 
     pub fn set_tags(&mut self, tags: Vec<Tag>) {
