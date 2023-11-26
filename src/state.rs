@@ -139,7 +139,7 @@ impl State {
 
     pub fn draw_all(&mut self, conn: &mut Connection<Self>) {
         for bar in &mut self.bars {
-            bar.request_frame(conn);
+            bar.frame(conn, &mut self.shared_state);
         }
     }
 
@@ -210,21 +210,21 @@ impl State {
     pub fn tags_updated(&mut self, conn: &mut Connection<Self>, output: Option<WlOutput>) {
         self.for_each_bar(output, |bar, ss| {
             bar.set_tags(ss.wm_info_provider.get_tags(&bar.output));
-            bar.request_frame(conn);
+            bar.frame(conn, ss);
         });
     }
 
     pub fn layout_name_updated(&mut self, conn: &mut Connection<Self>, output: Option<WlOutput>) {
         self.for_each_bar(output, |bar, ss| {
             bar.set_layout_name(ss.wm_info_provider.get_layout_name(&bar.output));
-            bar.request_frame(conn);
+            bar.frame(conn, ss);
         });
     }
 
     pub fn mode_name_updated(&mut self, conn: &mut Connection<Self>, output: Option<WlOutput>) {
         self.for_each_bar(output, |bar, ss| {
             bar.set_mode_name(ss.wm_info_provider.get_mode_name(&bar.output));
-            bar.request_frame(conn);
+            bar.frame(conn, ss);
         });
     }
 }

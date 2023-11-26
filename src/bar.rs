@@ -20,7 +20,8 @@ pub struct Bar {
     pub output: Output,
     hidden: bool,
     mapped: bool,
-    frame_cb: Option<WlCallback>,
+    throttle: Option<WlCallback>,
+    throttled: bool,
     width: u32,
     height: u32,
     scale120: Option<u32>,
@@ -65,7 +66,8 @@ impl Bar {
             output,
             hidden: true,
             mapped: false,
-            frame_cb: None,
+            throttle: None,
+            throttled: false,
             width: 0,
             height: state.shared_state.config.height,
             scale120: None,
@@ -136,7 +138,14 @@ impl Bar {
     }
 
     pub fn frame(&mut self, conn: &mut Connection<State>, ss: &mut SharedState) {
-        assert!(self.mapped);
+        if !self.mapped {
+            return;
+        }
+
+        if self.throttle.is_some() {
+            self.throttled = true;
+            return;
+        }
 
         let (pix_width, pix_height, scale_f) = match self.scale120 {
             Some(scale120) => (
@@ -326,24 +335,23 @@ impl Bar {
         self.surface
             .attach(conn, Some(buffer.into_wl_buffer()), 0, 0);
         self.surface.damage(conn, 0, 0, i32::MAX, i32::MAX);
-        self.surface.commit(conn);
-    }
 
-    pub fn request_frame(&mut self, conn: &mut Connection<State>) {
-        if self.mapped && !self.hidden && self.frame_cb.is_none() {
-            self.frame_cb = Some(self.surface.frame_with_cb(conn, |ctx| {
-                if let Some(bar) = ctx
-                    .state
-                    .bars
-                    .iter_mut()
-                    .find(|bar| bar.frame_cb == Some(ctx.proxy))
-                {
-                    bar.frame_cb = None;
+        self.throttle = Some(self.surface.frame_with_cb(conn, |ctx| {
+            if let Some(bar) = ctx
+                .state
+                .bars
+                .iter_mut()
+                .find(|bar| bar.throttle == Some(ctx.proxy))
+            {
+                bar.throttle = None;
+                if bar.throttled {
+                    bar.throttled = false;
                     bar.frame(ctx.conn, &mut ctx.state.shared_state);
                 }
-            }));
-            self.surface.commit(conn);
-        }
+            }
+        }));
+
+        self.surface.commit(conn);
     }
 
     pub fn show(&mut self, conn: &mut Connection<State>, shared_state: &SharedState) {
@@ -547,12 +555,8 @@ fn layer_surface_cb(ctx: EventCtx<State, ZwlrLayerSurfaceV1>) {
             assert_ne!(args.width, 0);
             bar.width = args.width;
             bar.layer_surface.ack_configure(ctx.conn, args.serial);
-            if bar.mapped {
-                bar.request_frame(ctx.conn);
-            } else {
-                bar.mapped = true;
-                bar.frame(ctx.conn, &mut ctx.state.shared_state);
-            }
+            bar.mapped = true;
+            bar.frame(ctx.conn, &mut ctx.state.shared_state);
         }
         zwlr_layer_surface_v1::Event::Closed => {
             let bar_index = ctx
@@ -579,6 +583,6 @@ fn fractional_scale_cb(ctx: EventCtx<State, WpFractionalScaleV1>) {
         .unwrap();
     if bar.scale120 != Some(scale120) {
         bar.scale120 = Some(scale120);
-        bar.request_frame(ctx.conn);
+        bar.frame(ctx.conn, &mut ctx.state.shared_state);
     }
 }
