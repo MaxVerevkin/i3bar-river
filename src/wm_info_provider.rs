@@ -45,6 +45,7 @@ pub trait WmInfoProvider {
     ) {
     }
 
+    // TODO: remove once Rust 1.76 is stable (RFC3324 dyn upcasting coercion)
     fn as_any(&mut self) -> &mut dyn Any;
 }
 
