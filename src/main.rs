@@ -100,7 +100,6 @@ fn main() -> anyhow::Result<()> {
         });
     }
 
-    loop {
-        el.run(&mut conn, &mut state)?;
-    }
+    el.run(&mut conn, &mut state)?;
+    unreachable!();
 }
