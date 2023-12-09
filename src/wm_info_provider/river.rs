@@ -1,7 +1,8 @@
 use std::ffi::CString;
 
-use wayrs_client::{cstr, Connection};
-use wayrs_client::{global::*, EventCtx};
+use wayrs_client::global::*;
+use wayrs_client::proxy::Proxy;
+use wayrs_client::{cstr, Connection, EventCtx};
 
 use super::*;
 use crate::state::State;
@@ -34,19 +35,20 @@ impl RiverInfoProvider {
         globals: &Globals,
         config: &WmConfig,
     ) -> Option<Self> {
-        let status_manager = globals.bind(conn, 1..=4).ok()?;
-        let wl_seat: WlSeat = globals.bind(conn, ..).ok()?; // river supports just one seat
+        let status_manager: ZriverStatusManagerV1 = globals.bind(conn, 1..=4).ok()?;
+        let wl_seat: WlSeat = globals.bind(conn, ..=5).ok()?; // river supports just one seat
+        let seat_status =
+            status_manager.get_river_seat_status_with_cb(conn, wl_seat, seat_status_cb);
+        if wl_seat.version() >= 5 {
+            wl_seat.release(conn);
+        }
         Some(Self {
             status_manager,
             control: globals.bind(conn, 1).ok()?,
             output_statuses: Vec::new(),
             max_tag: config.river.max_tag,
             seat_status: SeatStatus {
-                _status: status_manager.get_river_seat_status_with_cb(
-                    conn,
-                    wl_seat,
-                    seat_status_cb,
-                ),
+                _status: seat_status,
                 mode: None,
             },
         })
