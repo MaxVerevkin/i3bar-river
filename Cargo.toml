@@ -20,7 +20,7 @@ toml = { version = "0.8", default-features = false, features = ["parse"] }
 wayrs-client = "1.0" 
 wayrs-protocols = { version = "0.13", features = ["wlr-layer-shell-unstable-v1", "viewporter", "fractional-scale-v1"] }
 wayrs-utils = { version = "0.13", features = ["cursor", "shm_alloc", "seats"] }
-clap = { version = "4.3", default-features = false, features = ["derive", "std", "help"] }
+clap = { version = "4.3", default-features = false, features = ["derive", "std", "help", "usage"] }
 libc = "0.2"
 
 [profile.release]
