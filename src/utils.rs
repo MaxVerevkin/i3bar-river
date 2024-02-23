@@ -18,7 +18,7 @@ pub fn read_to_vec(fd: &mut impl AsFd, buf: &mut Vec<u8>) -> io::Result<usize> {
     let res = unsafe {
         libc::read(
             fd.as_fd().as_raw_fd(),
-            buf.as_mut_ptr().add(buf.len()) as *mut libc::c_void,
+            buf.as_mut_ptr().add(buf.len()).cast(),
             (buf.capacity() - buf.len()) as libc::size_t,
         )
     };
