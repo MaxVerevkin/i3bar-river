@@ -115,7 +115,7 @@ impl ComputedText {
             self.padding_left + options.overlap,
             (options.bar_height - self.height) * 0.5,
         );
-        pangocairo::show_layout(context, &self.layout);
+        pangocairo::functions::show_layout(context, &self.layout);
         context.restore().unwrap();
     }
 }
