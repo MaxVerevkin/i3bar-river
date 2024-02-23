@@ -3,11 +3,10 @@ use std::os::fd::AsRawFd;
 use std::os::unix::net::UnixStream;
 
 use serde::de::DeserializeOwned;
-use wayrs_client::{Connection, IoMode};
+use wayrs_client::IoMode;
 
 use super::*;
-use crate::event_loop::{self, EventLoop};
-use crate::state::State;
+use crate::event_loop;
 use crate::utils::read_to_vec;
 
 pub struct HyprlandInfoProvider {

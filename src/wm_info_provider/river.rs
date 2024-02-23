@@ -2,10 +2,9 @@ use std::ffi::CString;
 
 use wayrs_client::global::*;
 use wayrs_client::proxy::Proxy;
-use wayrs_client::{cstr, Connection, EventCtx};
+use wayrs_client::{cstr, EventCtx};
 
 use super::*;
-use crate::state::State;
 
 pub struct RiverInfoProvider {
     status_manager: ZriverStatusManagerV1,
