@@ -164,15 +164,18 @@ impl Bar {
         let width_f = self.width as f64;
         let height_f = self.height as f64;
 
-        let (buffer, canvas) = ss.shm.alloc_buffer(
-            conn,
-            BufferSpec {
-                width: pix_width,
-                height: pix_height,
-                stride: pix_width * 4,
-                format: wl_shm::Format::Argb8888,
-            },
-        );
+        let (buffer, canvas) = ss
+            .shm
+            .alloc_buffer(
+                conn,
+                BufferSpec {
+                    width: pix_width,
+                    height: pix_height,
+                    stride: pix_width * 4,
+                    format: wl_shm::Format::Argb8888,
+                },
+            )
+            .unwrap();
 
         let cairo_surf = unsafe {
             cairo::ImageSurface::create_for_data_unsafe(

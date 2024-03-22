@@ -49,8 +49,8 @@ fn main() -> anyhow::Result<()> {
     let mut state = State::new(&mut conn, &globals, &mut el, args.config.as_deref());
     conn.flush(IoMode::Blocking)?;
 
-    el.register_with_fd(sig_read, move |ctx| {
-        nix::unistd::read(sig_read, &mut [0; 1])?;
+    el.register_with_fd(sig_read.as_raw_fd(), move |ctx| {
+        nix::unistd::read(sig_read.as_raw_fd(), &mut [0; 1])?;
         ctx.state.toggle_visibility(ctx.conn);
         Ok(event_loop::Action::Keep)
     });
