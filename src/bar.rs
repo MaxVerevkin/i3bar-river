@@ -58,7 +58,7 @@ impl Bar {
             surface,
             Some(output.wl),
             zwlr_layer_shell_v1::Layer::Top,
-            wayrs_client::cstr!("i3bar-river").into(),
+            c"i3bar-river".into(),
             layer_surface_cb,
         );
 

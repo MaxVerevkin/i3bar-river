@@ -2,7 +2,7 @@ use std::ffi::CString;
 
 use wayrs_client::global::*;
 use wayrs_client::proxy::Proxy;
-use wayrs_client::{cstr, EventCtx};
+use wayrs_client::EventCtx;
 
 use super::*;
 
@@ -115,8 +115,8 @@ impl WmInfoProvider for RiverInfoProvider {
         btn: PointerBtn,
     ) {
         let cmd = match btn {
-            PointerBtn::Left => cstr!("set-focused-tags"),
-            PointerBtn::Right => cstr!("toggle-focused-tags"),
+            PointerBtn::Left => c"set-focused-tags",
+            PointerBtn::Right => c"toggle-focused-tags",
             _ => return,
         };
         self.control.add_argument(conn, cmd.to_owned());
