@@ -18,16 +18,15 @@ mod text;
 mod utils;
 mod wm_info_provider;
 
-use std::io::ErrorKind;
-use std::os::fd::AsRawFd;
+use std::io::{self, ErrorKind};
+use std::os::fd::{AsRawFd, RawFd};
 use std::path::PathBuf;
 
 use clap::Parser;
-use event_loop::EventLoop;
-use nix::fcntl::OFlag;
 use signal_hook::consts::*;
 use wayrs_client::{Connection, IoMode};
 
+use event_loop::EventLoop;
 use state::State;
 
 #[derive(Parser)]
@@ -41,7 +40,7 @@ struct Cli {
 fn main() -> anyhow::Result<()> {
     let args = Cli::parse();
 
-    let (sig_read, sig_write) = nix::unistd::pipe2(OFlag::O_NONBLOCK | OFlag::O_CLOEXEC)?;
+    let [sig_read, sig_write] = pipe(libc::O_NONBLOCK | libc::O_CLOEXEC)?;
     signal_hook::low_level::pipe::register(SIGUSR1, sig_write)?;
 
     let (mut conn, globals) = Connection::connect_and_collect_globals()?;
@@ -49,8 +48,12 @@ fn main() -> anyhow::Result<()> {
     let mut state = State::new(&mut conn, &globals, &mut el, args.config.as_deref());
     conn.flush(IoMode::Blocking)?;
 
-    el.register_with_fd(sig_read.as_raw_fd(), move |ctx| {
-        nix::unistd::read(sig_read.as_raw_fd(), &mut [0; 1])?;
+    el.register_with_fd(sig_read, move |ctx| {
+        let mut buf = [0u8];
+        assert_eq!(
+            unsafe { libc::read(sig_read, buf.as_mut_ptr().cast(), 1) },
+            1
+        );
         ctx.state.toggle_visibility(ctx.conn);
         Ok(event_loop::Action::Keep)
     });
@@ -102,4 +105,13 @@ fn main() -> anyhow::Result<()> {
 
     el.run(&mut conn, &mut state)?;
     unreachable!();
+}
+
+fn pipe(flags: libc::c_int) -> io::Result<[RawFd; 2]> {
+    let mut fds = [0; 2];
+    if unsafe { libc::pipe2(fds.as_mut_ptr(), flags) } == -1 {
+        Err(io::Error::last_os_error())
+    } else {
+        Ok(fds)
+    }
 }

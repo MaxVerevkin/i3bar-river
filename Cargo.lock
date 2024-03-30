@@ -286,7 +286,6 @@ dependencies = [
  "clap",
  "libc",
  "memchr",
- "nix",
  "pangocairo",
  "serde",
  "serde_json",

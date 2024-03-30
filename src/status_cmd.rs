@@ -1,4 +1,4 @@
-use std::io::{BufWriter, ErrorKind, Write};
+use std::io::{self, BufWriter, ErrorKind, Write};
 use std::os::unix::io::AsRawFd;
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 
@@ -25,10 +25,9 @@ impl StatusCmd {
             .spawn()?;
         let output = child.stdout.take().unwrap();
         let input = BufWriter::new(child.stdin.take().unwrap());
-        nix::fcntl::fcntl(
-            output.as_raw_fd(),
-            nix::fcntl::F_SETFL(nix::fcntl::OFlag::O_NONBLOCK),
-        )?;
+        if unsafe { libc::fcntl(output.as_raw_fd(), libc::F_SETFL, libc::O_NONBLOCK) } == -1 {
+            return Err(io::Error::last_os_error().into());
+        }
         Ok(Self {
             child,
             output,

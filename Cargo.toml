@@ -11,7 +11,6 @@ authors = ["MaxVerevkin <maxxverrr@gmail.com>"]
 [dependencies]
 anyhow = "1"
 memchr = "2"
-nix = { version = "0.28", default-features = false, features = ["fs"] }
 pangocairo = "0.19"
 serde_json = "1"
 serde = { version = "1", features = ["derive"] }
