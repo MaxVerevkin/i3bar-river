@@ -1,6 +1,6 @@
 [package]
 name = "i3bar-river"
-description = "A port of i3bar for river"
+description = "A port of i3bar for wlroots-based compositors "
 repository = "https://github.com/MaxVerevkin/i3bar-river"
 readme = "README.md"
 version = "0.1.6"
