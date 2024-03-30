@@ -55,6 +55,7 @@ fn main() -> anyhow::Result<()> {
             1
         );
         ctx.state.toggle_visibility(ctx.conn);
+        ctx.conn.flush(IoMode::Blocking)?;
         Ok(event_loop::Action::Keep)
     });
 
