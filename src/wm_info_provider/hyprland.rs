@@ -1,7 +1,6 @@
 use std::io::{self, Write};
 use std::os::fd::AsRawFd;
 use std::os::unix::net::UnixStream;
-
 use serde::de::DeserializeOwned;
 use wayrs_client::IoMode;
 
@@ -107,8 +106,9 @@ struct Ipc {
 
 impl Ipc {
     fn new(his: &str) -> io::Result<Self> {
-        let sock1_path = format!("/tmp/hypr/{his}/.socket.sock");
-        let sock2_path = format!("/tmp/hypr/{his}/.socket2.sock");
+        let xdgrd = std::env::var("XDG_RUNTIME_DIR").expect("$XDG_RUNTIME_DIR is not set");
+        let sock1_path = format!("{xdgrd}/hypr/{his}/.socket.sock");
+        let sock2_path = format!("{xdgrd}/hypr/{his}/.socket2.sock");
         let sock2 = UnixStream::connect(sock2_path)?;
         sock2.set_nonblocking(true)?;
         Ok(Self {
