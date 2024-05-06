@@ -108,11 +108,10 @@ struct Ipc {
 
 impl Ipc {
     fn new(his: &str) -> Option<Self> {
-        let mut path = PathBuf::from("/tmp/hypr");
+        let mut path = PathBuf::from(std::env::var("XDG_RUNTIME_DIR").ok()?);
+        path.push("hypr");
         if !path.exists() {
-            let xdgrd = std::env::var("XDG_RUNTIME_DIR").ok()?;
-            path.push(xdgrd);
-            path.push("hypr");
+            path.push("/tmp/hypr");
         }
         path.push(his);
         let sock1_path = path.join(".socket.sock");
