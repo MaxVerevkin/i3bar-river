@@ -153,7 +153,7 @@ impl Ipc {
                 self.sock2_buf.drain(..=i);
                 return Ok(event);
             }
-            if read_to_vec(&mut self.sock2, &mut self.sock2_buf)? == 0 {
+            if read_to_vec(&self.sock2, &mut self.sock2_buf)? == 0 {
                 return Err(io::Error::new(
                     io::ErrorKind::BrokenPipe,
                     "hyprland socked disconnected",

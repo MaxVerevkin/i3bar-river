@@ -9,11 +9,8 @@ use serde_json::{Deserializer, Error as JsonError};
 /// Read from a raw file descriptor to the vector.
 ///
 /// Appends data at the end of the buffer. Resizes vector as needed.
-#[allow(clippy::needless_pass_by_ref_mut)]
-pub fn read_to_vec(fd: &mut impl AsFd, buf: &mut Vec<u8>) -> io::Result<usize> {
-    if buf.capacity() - buf.len() < 1024 {
-        buf.reserve(buf.capacity().max(1024));
-    }
+pub fn read_to_vec(fd: impl AsFd, buf: &mut Vec<u8>) -> io::Result<usize> {
+    buf.reserve(1024);
 
     let res = unsafe {
         libc::read(

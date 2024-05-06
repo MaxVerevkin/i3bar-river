@@ -38,7 +38,7 @@ impl StatusCmd {
     }
 
     pub fn receive_blocks(&mut self) -> Result<Option<Vec<Block>>> {
-        match read_to_vec(&mut self.output, &mut self.buf) {
+        match read_to_vec(&self.output, &mut self.buf) {
             Ok(0) => bail!("status command exited"),
             Ok(_n) => (),
             Err(e) if e.kind() == ErrorKind::WouldBlock => return Ok(None),
