@@ -1,6 +1,7 @@
 use std::io::{self, Write};
 use std::os::fd::AsRawFd;
 use std::os::unix::net::UnixStream;
+use std::path::PathBuf;
 
 use serde::de::DeserializeOwned;
 use wayrs_client::IoMode;
@@ -18,7 +19,7 @@ pub struct HyprlandInfoProvider {
 impl HyprlandInfoProvider {
     pub fn new() -> Option<Self> {
         let his = std::env::var("HYPRLAND_INSTANCE_SIGNATURE").ok()?;
-        let ipc = Ipc::new(&his).ok()?;
+        let ipc = Ipc::new(&his)?;
         Some(Self {
             workspaces: ipc.query_sorted_workspaces().ok()?,
             active_id: ipc.query_json::<IpcWorkspace>("j/activeworkspace").ok()?.id,
@@ -100,18 +101,25 @@ fn hyprland_cb(conn: &mut Connection<State>, state: &mut State) -> io::Result<()
 }
 
 struct Ipc {
-    sock1_path: String,
+    sock1_path: PathBuf,
     sock2: UnixStream,
     sock2_buf: Vec<u8>,
 }
 
 impl Ipc {
-    fn new(his: &str) -> io::Result<Self> {
-        let sock1_path = format!("/tmp/hypr/{his}/.socket.sock");
-        let sock2_path = format!("/tmp/hypr/{his}/.socket2.sock");
-        let sock2 = UnixStream::connect(sock2_path)?;
-        sock2.set_nonblocking(true)?;
-        Ok(Self {
+    fn new(his: &str) -> Option<Self> {
+        let mut path = PathBuf::from("/tmp/hypr");
+        if !path.exists() {
+            let xdgrd = std::env::var("XDG_RUNTIME_DIR").ok()?;
+            path.push(xdgrd);
+            path.push("hypr");
+        }
+        path.push(his);
+        let sock1_path = path.join(".socket.sock");
+        let sock2_path = path.join(".socket2.sock");
+        let sock2 = UnixStream::connect(sock2_path).ok()?;
+        sock2.set_nonblocking(true).ok()?;
+        Some(Self {
             sock1_path,
             sock2,
             sock2_buf: Vec::new(),
