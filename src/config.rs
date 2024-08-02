@@ -36,6 +36,7 @@ pub struct Config {
     pub separator_width: f64,
     pub tags_r: f64,
     pub tags_padding: f64,
+    pub tags_margin: f64,
     pub blocks_r: f64,
     pub blocks_overlap: f64,
     // misc
@@ -78,6 +79,7 @@ impl Default for Config {
             separator_width: 2.0,
             tags_r: 0.0,
             tags_padding: 25.0,
+            tags_margin: 0.0,
             blocks_r: 0.0,
             blocks_overlap: 0.0,
 

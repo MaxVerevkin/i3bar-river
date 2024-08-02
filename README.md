@@ -70,6 +70,7 @@ margin_right = 0
 separator_width = 2.0
 tags_r = 0.0
 tags_padding = 25.0
+tags_margin = 0.0
 blocks_r = 0.0
 blocks_overlap = 0.0
 

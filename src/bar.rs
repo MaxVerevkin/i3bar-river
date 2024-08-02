@@ -34,7 +34,7 @@ pub struct Bar {
     layout_name: Option<String>,
     mode_name: Option<String>,
     tags_btns: ButtonManager<u32>,
-    tags_computed: Vec<(ColorPair, ComputedText)>,
+    tags_computed: Vec<(u32, ColorPair, ComputedText)>,
     layout_name_computed: Option<ComputedText>,
     mode_computed: Option<ComputedText>,
 }
@@ -208,8 +208,6 @@ impl Bar {
 
         // Compute tags
         if self.tags_computed.is_empty() {
-            let mut offset_left = 0.0;
-            self.tags_btns.clear();
             for tag in &self.tags {
                 let (bg, fg) = if tag.is_urgent {
                     (ss.config.tag_urgent_bg, ss.config.tag_urgent_fg)
@@ -223,38 +221,35 @@ impl Bar {
                     continue;
                 };
                 let comp = compute_tag_label(&tag.name, &ss.config);
-                self.tags_btns.push(offset_left, comp.width, tag.id);
-                offset_left += comp.width;
-                self.tags_computed.push((ColorPair { bg, fg }, comp));
+                self.tags_computed
+                    .push((tag.id, ColorPair { bg, fg }, comp));
             }
         }
 
         // Display tags
         let mut offset_left = 0.0;
-        for (i, label) in self.tags_computed.iter().enumerate() {
-            label.1.render(
+        self.tags_btns.clear();
+        for (i, (id, color, computed)) in self.tags_computed.iter().enumerate() {
+            let left_joined = i != 0 && self.tags_computed[i - 1].1 == *color;
+            let right_joined =
+                i + 1 != self.tags_computed.len() && self.tags_computed[i + 1].1 == *color;
+            if i != 0 && !left_joined {
+                offset_left += ss.config.tags_margin;
+            }
+            computed.render(
                 &cairo_ctx,
                 RenderOptions {
                     x_offset: offset_left,
                     bar_height: height_f,
-                    fg_color: label.0.fg,
-                    bg_color: Some(label.0.bg),
-                    r_left: if i == 0 || self.tags_computed[i - 1].0 != label.0 {
-                        ss.config.tags_r
-                    } else {
-                        0.0
-                    },
-                    r_right: if i + 1 == self.tags_computed.len()
-                        || self.tags_computed[i + 1].0 != label.0
-                    {
-                        ss.config.tags_r
-                    } else {
-                        0.0
-                    },
+                    fg_color: color.fg,
+                    bg_color: Some(color.bg),
+                    r_left: if left_joined { 0.0 } else { ss.config.tags_r },
+                    r_right: if right_joined { 0.0 } else { ss.config.tags_r },
                     overlap: 0.0,
                 },
             );
-            offset_left += label.1.width;
+            self.tags_btns.push(offset_left, computed.width, *id);
+            offset_left += computed.width;
         }
 
         // Display layout name
