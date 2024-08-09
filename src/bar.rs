@@ -207,7 +207,7 @@ impl Bar {
         }
 
         // Compute tags
-        if self.tags_computed.is_empty() {
+        if ss.config.show_tags && self.tags_computed.is_empty() {
             for tag in &self.tags {
                 let (bg, fg) = if tag.is_urgent {
                     (ss.config.tag_urgent_bg, ss.config.tag_urgent_fg)

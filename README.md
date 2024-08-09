@@ -79,6 +79,7 @@ position = "top" # either "top" or "bottom"
 layer = "top" # one of "top", "overlay", "bottom" or "background"
 hide_inactive_tags = true
 invert_touchpad_scrolling = true
+show_tags = true
 show_layout_name = true
 blend = true # whether tags/blocks colors should blend with bar's background
 show_mode = true
