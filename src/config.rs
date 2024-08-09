@@ -1,5 +1,5 @@
 use crate::color::Color;
-use crate::protocol::zwlr_layer_surface_v1;
+use crate::protocol::{zwlr_layer_shell_v1, zwlr_layer_surface_v1};
 use anyhow::{Context, Result};
 use pangocairo::pango::FontDescription;
 use serde::{de, Deserialize};
@@ -41,6 +41,7 @@ pub struct Config {
     pub blocks_overlap: f64,
     // misc
     pub position: Position,
+    pub layer: Layer,
     pub hide_inactive_tags: bool,
     pub invert_touchpad_scrolling: bool,
     pub show_layout_name: bool,
@@ -84,6 +85,7 @@ impl Default for Config {
             blocks_overlap: 0.0,
 
             position: Position::Top,
+            layer: Layer::Top,
             hide_inactive_tags: true,
             invert_touchpad_scrolling: true,
             show_layout_name: true,
@@ -157,6 +159,26 @@ impl From<Position> for zwlr_layer_surface_v1::Anchor {
         match position {
             Position::Top => Self::Top | Self::Left | Self::Right,
             Position::Bottom => Self::Bottom | Self::Left | Self::Right,
+        }
+    }
+}
+
+#[derive(Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum Layer {
+    Background,
+    Bottom,
+    Top,
+    Overlay,
+}
+
+impl From<Layer> for zwlr_layer_shell_v1::Layer {
+    fn from(layer: Layer) -> Self {
+        match layer {
+            Layer::Background => Self::Background,
+            Layer::Bottom => Self::Bottom,
+            Layer::Top => Self::Top,
+            Layer::Overlay => Self::Overlay,
         }
     }
 }

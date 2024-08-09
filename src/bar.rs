@@ -57,7 +57,7 @@ impl Bar {
             conn,
             surface,
             Some(output.wl),
-            zwlr_layer_shell_v1::Layer::Top,
+            state.shared_state.config.layer.into(),
             c"i3bar-river".into(),
             layer_surface_cb,
         );

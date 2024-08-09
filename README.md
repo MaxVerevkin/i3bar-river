@@ -76,6 +76,7 @@ blocks_overlap = 0.0
 
 # Misc
 position = "top" # either "top" or "bottom"
+layer = "top" # one of "top", "overlay", "bottom" or "background"
 hide_inactive_tags = true
 invert_touchpad_scrolling = true
 show_layout_name = true
