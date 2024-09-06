@@ -4,7 +4,6 @@ use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
 
 use serde::de::DeserializeOwned;
-use wayrs_client::IoMode;
 
 use super::*;
 use crate::event_loop;
@@ -35,7 +34,6 @@ impl WmInfoProvider for HyprlandInfoProvider {
                 Ok(()) => Ok(event_loop::Action::Keep),
                 Err(e) => {
                     ctx.state.set_error(ctx.conn, e);
-                    ctx.conn.flush(IoMode::Blocking)?;
                     Ok(event_loop::Action::Unregister)
                 }
             }

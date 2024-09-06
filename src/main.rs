@@ -48,6 +48,11 @@ fn main() -> anyhow::Result<()> {
     let mut state = State::new(&mut conn, &globals, &mut el, args.config.as_deref());
     conn.flush(IoMode::Blocking)?;
 
+    el.add_on_idle(|ctx| {
+        ctx.conn.flush(IoMode::Blocking)?;
+        Ok(event_loop::Action::Keep)
+    });
+
     el.register_with_fd(sig_read, move |ctx| {
         let mut buf = [0u8];
         assert_eq!(
@@ -55,16 +60,12 @@ fn main() -> anyhow::Result<()> {
             1
         );
         ctx.state.toggle_visibility(ctx.conn);
-        ctx.conn.flush(IoMode::Blocking)?;
         Ok(event_loop::Action::Keep)
     });
 
     el.register_with_fd(conn.as_raw_fd(), |ctx| {
         match ctx.conn.recv_events(IoMode::NonBlocking) {
-            Ok(()) => {
-                ctx.conn.dispatch_events(ctx.state);
-                ctx.conn.flush(IoMode::Blocking)?;
-            }
+            Ok(()) => ctx.conn.dispatch_events(ctx.state),
             Err(e) if e.kind() == ErrorKind::WouldBlock => (),
             Err(e) => bail!(e),
         }
@@ -84,7 +85,6 @@ fn main() -> anyhow::Result<()> {
                 Ok(None) => Ok(event_loop::Action::Keep),
                 Ok(Some(blocks)) => {
                     ctx.state.set_blocks(ctx.conn, blocks);
-                    ctx.conn.flush(IoMode::Blocking)?;
                     Ok(event_loop::Action::Keep)
                 }
                 Err(e) => {
@@ -97,7 +97,6 @@ fn main() -> anyhow::Result<()> {
                         .child
                         .kill();
                     ctx.state.set_error(ctx.conn, e);
-                    ctx.conn.flush(IoMode::Blocking)?;
                     Ok(event_loop::Action::Unregister)
                 }
             }

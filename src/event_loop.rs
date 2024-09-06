@@ -16,8 +16,8 @@ pub struct EventLoopCtx<'a> {
 
 /// Simple callback-based event loop. Implemented using `poll`.
 pub struct EventLoop {
-    pollfds: Vec<libc::pollfd>,
     cbs: HashMap<RawFd, Callback>,
+    on_idle: Vec<Callback>,
 }
 
 pub enum Action {
@@ -28,8 +28,8 @@ pub enum Action {
 impl EventLoop {
     pub fn new() -> Self {
         Self {
-            pollfds: Vec::new(),
             cbs: HashMap::new(),
+            on_idle: Vec::new(),
         }
     }
 
@@ -40,11 +40,21 @@ impl EventLoop {
         self.cbs.insert(fd, Box::new(cb));
     }
 
+    pub fn add_on_idle<F>(&mut self, cb: F)
+    where
+        F: FnMut(EventLoopCtx) -> Result<Action> + 'static,
+    {
+        self.on_idle.push(Box::new(cb));
+    }
+
     pub fn run(&mut self, conn: &mut Connection<State>, state: &mut State) -> Result<()> {
+        let mut pollfds = Vec::new();
+        let mut on_idle_scratch = Vec::new();
+
         while !self.cbs.is_empty() {
-            self.pollfds.clear();
+            pollfds.clear();
             for &fd in self.cbs.keys() {
-                self.pollfds.push(libc::pollfd {
+                pollfds.push(libc::pollfd {
                     fd,
                     events: libc::POLLIN,
                     revents: 0,
@@ -52,8 +62,7 @@ impl EventLoop {
             }
 
             loop {
-                let result =
-                    unsafe { libc::poll(self.pollfds.as_mut_ptr(), self.pollfds.len() as _, -1) };
+                let result = unsafe { libc::poll(pollfds.as_mut_ptr(), pollfds.len() as _, -1) };
                 if result == -1 {
                     let err = io::Error::last_os_error();
                     if err.kind() == io::ErrorKind::Interrupted {
@@ -64,7 +73,7 @@ impl EventLoop {
                 break;
             }
 
-            for fd in &self.pollfds {
+            for fd in &pollfds {
                 if fd.revents != 0 {
                     let mut cb = self.cbs.remove(&fd.fd).unwrap();
                     match cb(EventLoopCtx { conn, state })? {
@@ -75,6 +84,14 @@ impl EventLoop {
                     }
                 }
             }
+
+            for mut cb in self.on_idle.drain(..) {
+                match cb(EventLoopCtx { conn, state })? {
+                    Action::Keep => on_idle_scratch.push(cb),
+                    Action::Unregister => (),
+                }
+            }
+            self.on_idle.append(&mut on_idle_scratch);
         }
         Ok(())
     }
