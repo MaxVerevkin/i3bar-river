@@ -83,6 +83,15 @@ fn hyprland_cb(conn: &mut Connection<State>, state: &mut State) -> io::Result<()
                         .parse()
                         .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
                     updated = true;
+                } else if let Some(data) = event.strip_prefix("focusedmon>>") {
+                    let (_monitor, active_ws) = data.split_once(',').ok_or_else(|| {
+                        io::Error::new(io::ErrorKind::InvalidData, "Too few fields in data")
+                    })?;
+
+                    hyprland.active_id = active_ws
+                        .parse()
+                        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+                    updated = true;
                 } else if event.contains("workspace>>") {
                     hyprland.workspaces = hyprland.ipc.query_sorted_workspaces()?;
                     updated = true;
