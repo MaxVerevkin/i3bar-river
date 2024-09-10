@@ -1,3 +1,5 @@
+#![allow(clippy::collapsible_else_if)]
+
 use std::io::{self, Write};
 use std::os::fd::AsRawFd;
 use std::os::unix::net::UnixStream;
@@ -24,6 +26,10 @@ impl HyprlandInfoProvider {
             active_id: ipc.query_json::<IpcWorkspace>("j/activeworkspace").ok()?.id,
             ipc,
         })
+    }
+
+    fn set_workspace(&self, id: u32) {
+        let _ = self.ipc.exec(&format!("/dispatch workspace {id}"));
     }
 }
 
@@ -57,13 +63,42 @@ impl WmInfoProvider for HyprlandInfoProvider {
     fn click_on_tag(
         &mut self,
         _: &mut Connection<State>,
-        _: WlOutput,
+        output: &Output,
         _: WlSeat,
-        tag_id: u32,
+        tag_id: Option<u32>,
         btn: PointerBtn,
     ) {
-        if btn == PointerBtn::Left {
-            let _ = self.ipc.exec(&format!("/dispatch workspace {tag_id}"));
+        match btn {
+            PointerBtn::Left => {
+                if let Some(tag_id) = tag_id {
+                    self.set_workspace(tag_id);
+                }
+            }
+            PointerBtn::WheelUp | PointerBtn::WheelDown => {
+                if let Some(active_i) = self
+                    .workspaces
+                    .iter()
+                    .position(|ws| ws.monitor == output.name && self.active_id == ws.id)
+                {
+                    if btn == PointerBtn::WheelUp {
+                        if let Some(prev) = self.workspaces[..active_i]
+                            .iter()
+                            .rfind(|ws| ws.monitor == output.name)
+                        {
+                            self.set_workspace(prev.id);
+                        }
+                    } else {
+                        if let Some(next) = self.workspaces[active_i..]
+                            .iter()
+                            .skip(1)
+                            .find(|ws| ws.monitor == output.name)
+                        {
+                            self.set_workspace(next.id);
+                        }
+                    }
+                }
+            }
+            _ => (),
         }
     }
 

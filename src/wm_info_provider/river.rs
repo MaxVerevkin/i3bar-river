@@ -52,6 +52,15 @@ impl RiverInfoProvider {
             },
         })
     }
+
+    fn set_focused_tags(&self, seat: WlSeat, conn: &mut Connection<State>, tags: u32) {
+        self.control
+            .add_argument(conn, c"set-focused-tags".to_owned());
+        self.control
+            .add_argument(conn, CString::new(tags.to_string()).unwrap());
+        self.control
+            .run_command_with_cb(conn, seat, river_command_cb);
+    }
 }
 
 impl WmInfoProvider for RiverInfoProvider {
@@ -109,23 +118,44 @@ impl WmInfoProvider for RiverInfoProvider {
     fn click_on_tag(
         &mut self,
         conn: &mut Connection<State>,
-        _output: WlOutput,
+        output: &Output,
         seat: WlSeat,
-        tag_id: u32,
+        tag_id: Option<u32>,
         btn: PointerBtn,
     ) {
-        let cmd = match btn {
-            PointerBtn::Left => c"set-focused-tags",
-            PointerBtn::Right => c"toggle-focused-tags",
-            _ => return,
-        };
-        self.control.add_argument(conn, cmd.to_owned());
-        self.control.add_argument(
-            conn,
-            CString::new((1u32 << (tag_id - 1)).to_string()).unwrap(),
-        );
-        self.control
-            .run_command_with_cb(conn, seat, river_command_cb);
+        match btn {
+            PointerBtn::Left => {
+                if let Some(tag_id) = tag_id {
+                    self.set_focused_tags(seat, conn, 1u32 << (tag_id - 1));
+                }
+            }
+            PointerBtn::Right => {
+                if let Some(tag_id) = tag_id {
+                    self.control
+                        .add_argument(conn, c"toggle-focused-tags".to_owned());
+                    self.control.add_argument(
+                        conn,
+                        CString::new((1u32 << (tag_id - 1)).to_string()).unwrap(),
+                    );
+                    self.control
+                        .run_command_with_cb(conn, seat, river_command_cb);
+                }
+            }
+            PointerBtn::WheelUp | PointerBtn::WheelDown => {
+                if let Some(status) = self.output_statuses.iter().find(|s| s.output == output.wl) {
+                    let mut new_tags = if btn == PointerBtn::WheelUp {
+                        status.focused_tags >> 1
+                    } else {
+                        status.focused_tags << 1
+                    };
+                    if new_tags == 0 {
+                        new_tags |= status.focused_tags & 0x8000_0001;
+                    }
+                    self.set_focused_tags(seat, conn, new_tags);
+                }
+            }
+            _ => (),
+        }
     }
 
     fn as_any(&mut self) -> &mut dyn Any {

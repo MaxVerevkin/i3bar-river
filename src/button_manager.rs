@@ -16,4 +16,14 @@ impl<T> ButtonManager<T> {
             .find(|(x_off, w, _)| x >= *x_off && x <= *x_off + *w)
             .map(|(_, _, e)| e)
     }
+
+    pub fn is_between(&self, x: f64) -> bool {
+        let mut left = false;
+        let mut right = false;
+        for &(x_off, w, _) in &self.0 {
+            left |= x_off <= x;
+            right |= x_off + w >= x;
+        }
+        left && right
+    }
 }

@@ -38,9 +38,9 @@ pub trait WmInfoProvider {
     fn click_on_tag(
         &mut self,
         _conn: &mut Connection<State>,
-        _output: WlOutput,
+        _output: &Output,
         _seat: WlSeat,
-        _tag_id: u32,
+        _tag_id: Option<u32>,
         _btn: PointerBtn,
     ) {
     }
