@@ -92,7 +92,7 @@ impl WmInfoProvider for RiverInfoProvider {
         let Some(status) = self.output_statuses.iter().find(|s| s.output == output.wl) else {
             return Vec::new();
         };
-        (1..=self.max_tag)
+        (1..=u8::min(self.max_tag, 32))
             .map(|tag| Tag {
                 id: tag as u32,
                 name: tag.to_string(),
