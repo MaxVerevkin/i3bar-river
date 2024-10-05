@@ -30,7 +30,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Get required packages
-        run: sudo apt-get install libpango1.0-dev
+        run: sudo apt-get install libpango1.0-dev fd-find
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
