@@ -114,25 +114,21 @@ fn hyprland_cb(conn: &mut Connection<State>, state: &mut State) -> io::Result<()
         match hyprland.ipc.next_event() {
             Ok(event) => {
                 if let Some(active_ws) = event.strip_prefix("workspace>>") {
-                    match hyprland.workspaces.iter().find(|ws| ws.name == active_ws) {
-                        Some(ws) => {
-                            hyprland.active_id = ws.id;
-                            updated = true;
-                        }
-                        None => return Err(io::Error::new(io::ErrorKind::InvalidData, "Unknown workspace"))
-                    }
+                    let ws = hyprland.workspaces.iter().find(|ws| ws.name == active_ws).ok_or_else(|| {
+                        io::Error::new(io::ErrorKind::InvalidData, "Unknown workspace")
+                    })?;
+                    hyprland.active_id = ws.id;
+                    updated = true;
                 } else if let Some(data) = event.strip_prefix("focusedmon>>") {
                     let (_monitor, active_ws) = data.split_once(',').ok_or_else(|| {
                         io::Error::new(io::ErrorKind::InvalidData, "Too few fields in data")
                     })?;
 
-                    match hyprland.workspaces.iter().find(|ws| ws.name == active_ws) {
-                        Some(ws) => {
-                            hyprland.active_id = ws.id;
-                            updated = true;
-                        }
-                        None => return Err(io::Error::new(io::ErrorKind::InvalidData, "Unknown workspace"))
-                    }
+                    let ws = hyprland.workspaces.iter().find(|ws| ws.name == active_ws).ok_or_else(|| {
+                        io::Error::new(io::ErrorKind::InvalidData, "Unknown workspace")
+                    })?;
+                    hyprland.active_id = ws.id;
+                    updated = true;
                 } else if event.contains("workspace>>") {
                     hyprland.workspaces = hyprland.ipc.query_sorted_workspaces()?;
                     updated = true;
