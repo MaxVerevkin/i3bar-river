@@ -114,9 +114,13 @@ fn hyprland_cb(conn: &mut Connection<State>, state: &mut State) -> io::Result<()
         match hyprland.ipc.next_event() {
             Ok(event) => {
                 if let Some(active_ws) = event.strip_prefix("workspace>>") {
-                    let ws = hyprland.workspaces.iter().find(|ws| ws.name == active_ws).ok_or_else(|| {
-                        io::Error::new(io::ErrorKind::InvalidData, "Unknown workspace")
-                    })?;
+                    let ws = hyprland
+                        .workspaces
+                        .iter()
+                        .find(|ws| ws.name == active_ws)
+                        .ok_or_else(|| {
+                            io::Error::new(io::ErrorKind::InvalidData, "Unknown workspace")
+                        })?;
                     hyprland.active_id = ws.id;
                     updated = true;
                 } else if let Some(data) = event.strip_prefix("focusedmon>>") {
@@ -124,9 +128,13 @@ fn hyprland_cb(conn: &mut Connection<State>, state: &mut State) -> io::Result<()
                         io::Error::new(io::ErrorKind::InvalidData, "Too few fields in data")
                     })?;
 
-                    let ws = hyprland.workspaces.iter().find(|ws| ws.name == active_ws).ok_or_else(|| {
-                        io::Error::new(io::ErrorKind::InvalidData, "Unknown workspace")
-                    })?;
+                    let ws = hyprland
+                        .workspaces
+                        .iter()
+                        .find(|ws| ws.name == active_ws)
+                        .ok_or_else(|| {
+                            io::Error::new(io::ErrorKind::InvalidData, "Unknown workspace")
+                        })?;
                     hyprland.active_id = ws.id;
                     updated = true;
                 } else if event.contains("workspace>>") {
