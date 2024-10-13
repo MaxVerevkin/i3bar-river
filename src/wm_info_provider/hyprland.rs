@@ -14,7 +14,7 @@ use crate::utils::read_to_vec;
 pub struct HyprlandInfoProvider {
     ipc: Ipc,
     workspaces: Vec<IpcWorkspace>,
-    active_id: u32,
+    active_name: String,
 }
 
 impl HyprlandInfoProvider {
@@ -23,7 +23,10 @@ impl HyprlandInfoProvider {
         let ipc = Ipc::new(&his)?;
         Some(Self {
             workspaces: ipc.query_sorted_workspaces().ok()?,
-            active_id: ipc.query_json::<IpcWorkspace>("j/activeworkspace").ok()?.id,
+            active_name: ipc
+                .query_json::<IpcWorkspace>("j/activeworkspace")
+                .ok()?
+                .name,
             ipc,
         })
     }
@@ -53,7 +56,7 @@ impl WmInfoProvider for HyprlandInfoProvider {
             .map(|ws| Tag {
                 id: ws.id,
                 name: ws.name.clone(),
-                is_focused: ws.id == self.active_id,
+                is_focused: ws.name == self.active_name,
                 is_active: true,
                 is_urgent: false,
             })
@@ -78,7 +81,7 @@ impl WmInfoProvider for HyprlandInfoProvider {
                 if let Some(active_i) = self
                     .workspaces
                     .iter()
-                    .position(|ws| ws.monitor == output.name && self.active_id == ws.id)
+                    .position(|ws| ws.monitor == output.name && self.active_name == ws.name)
                 {
                     if btn == PointerBtn::WheelUp {
                         if let Some(prev) = self.workspaces[..active_i]
@@ -114,28 +117,13 @@ fn hyprland_cb(conn: &mut Connection<State>, state: &mut State) -> io::Result<()
         match hyprland.ipc.next_event() {
             Ok(event) => {
                 if let Some(active_ws) = event.strip_prefix("workspace>>") {
-                    let ws = hyprland
-                        .workspaces
-                        .iter()
-                        .find(|ws| ws.name == active_ws)
-                        .ok_or_else(|| {
-                            io::Error::new(io::ErrorKind::InvalidData, "Unknown workspace")
-                        })?;
-                    hyprland.active_id = ws.id;
+                    hyprland.active_name = active_ws.to_owned();
                     updated = true;
                 } else if let Some(data) = event.strip_prefix("focusedmon>>") {
                     let (_monitor, active_ws) = data.split_once(',').ok_or_else(|| {
                         io::Error::new(io::ErrorKind::InvalidData, "Too few fields in data")
                     })?;
-
-                    let ws = hyprland
-                        .workspaces
-                        .iter()
-                        .find(|ws| ws.name == active_ws)
-                        .ok_or_else(|| {
-                            io::Error::new(io::ErrorKind::InvalidData, "Unknown workspace")
-                        })?;
-                    hyprland.active_id = ws.id;
+                    hyprland.active_name = active_ws.to_owned();
                     updated = true;
                 } else if event.contains("workspace>>") {
                     hyprland.workspaces = hyprland.ipc.query_sorted_workspaces()?;
