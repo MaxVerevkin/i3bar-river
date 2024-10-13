@@ -96,7 +96,7 @@ fn main() -> anyhow::Result<()> {
                         .unwrap()
                         .child
                         .kill();
-                    ctx.state.set_error(ctx.conn, e);
+                    ctx.state.set_error(ctx.conn, "status", e);
                     Ok(event_loop::Action::Unregister)
                 }
             }

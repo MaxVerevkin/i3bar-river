@@ -39,7 +39,7 @@ impl WmInfoProvider for HyprlandInfoProvider {
             match hyprland_cb(ctx.conn, ctx.state) {
                 Ok(()) => Ok(event_loop::Action::Keep),
                 Err(e) => {
-                    ctx.state.set_error(ctx.conn, e);
+                    ctx.state.set_error(ctx.conn, "hyprland", e);
                     Ok(event_loop::Action::Unregister)
                 }
             }

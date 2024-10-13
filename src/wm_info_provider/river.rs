@@ -211,6 +211,7 @@ fn seat_status_cb(ctx: EventCtx<State, ZriverSeatStatusV1>) {
 
 fn river_command_cb(ctx: EventCtx<State, ZriverCommandCallbackV1>) {
     if let zriver_command_callback_v1::Event::Failure(msg) = ctx.event {
-        ctx.state.set_error(ctx.conn, msg.to_string_lossy())
+        ctx.state
+            .set_error(ctx.conn, "river", msg.to_string_lossy())
     }
 }

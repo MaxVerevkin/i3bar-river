@@ -33,6 +33,7 @@ pub struct State {
     pub pending_outputs: Vec<PendingOutput>,
 
     pub hidden: bool,
+    pub has_error: bool,
     pub bars: Vec<Bar>,
 
     pub shared_state: SharedState,
@@ -99,6 +100,7 @@ impl State {
                 .collect(),
 
             hidden: false,
+            has_error: false,
             bars: Vec::new(),
 
             shared_state: SharedState {
@@ -114,27 +116,30 @@ impl State {
         };
 
         if let Err(e) = error {
-            this.set_error(conn, e.to_string());
+            this.set_error(conn, "init", e.to_string());
         }
 
         this
     }
 
     pub fn set_blocks(&mut self, conn: &mut Connection<Self>, blocks: Vec<Block>) {
-        self.shared_state
-            .blocks_cache
-            .process_new_blocks(&self.shared_state.config, blocks);
-        self.draw_all(conn);
+        if !self.has_error {
+            self.shared_state
+                .blocks_cache
+                .process_new_blocks(&self.shared_state.config, blocks);
+            self.draw_all(conn);
+        }
     }
 
-    pub fn set_error(&mut self, conn: &mut Connection<Self>, error: impl Display) {
+    pub fn set_error(&mut self, conn: &mut Connection<Self>, context: &str, error: impl Display) {
         self.set_blocks(
             conn,
             vec![Block {
-                full_text: error.to_string(),
+                full_text: format!("{context}: {error}"),
                 ..Default::default()
             }],
         );
+        self.has_error = true;
     }
 
     pub fn draw_all(&mut self, conn: &mut Connection<Self>) {
