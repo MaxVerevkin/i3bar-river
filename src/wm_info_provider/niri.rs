@@ -27,9 +27,9 @@ impl NiriInfoProvider {
     }
 
     fn set_workspace(&self, idx: u32) {
-        let _ = self.ipc.exec(
-            &format!(r#"{{"Action":{{"FocusWorkspace":{{"reference":{{"Index":{idx}}}}}}}}}"#)
-        );
+        let _ = self.ipc.exec(&format!(
+            r#"{{"Action":{{"FocusWorkspace":{{"reference":{{"Index":{idx}}}}}}}}}"#
+        ));
     }
 }
 
@@ -58,7 +58,8 @@ impl WmInfoProvider for NiriInfoProvider {
                 id: ws.idx,
                 name: ws.name.clone().map_or_else(
                     || ws.idx.to_string(),
-                    |name| format!("{0} / {1}", ws.idx, name)),
+                    |name| format!("{0} / {1}", ws.idx, name),
+                ),
                 is_focused: ws.is_active,
                 is_active: i < self.workspaces.len() - 1 || ws.is_focused,
                 is_urgent: false,
@@ -118,7 +119,7 @@ fn niri_cb(conn: &mut Connection<State>, state: &mut State) -> io::Result<()> {
     let mut updated = false;
     loop {
         match niri.ipc.next_event() {
-            Ok(IpcEvent::WorkspacesChanged{ workspaces }) => {
+            Ok(IpcEvent::WorkspacesChanged { workspaces }) => {
                 niri.workspaces = workspaces;
                 niri.workspaces.sort_by_key(|w| w.idx);
                 updated = true;
@@ -126,11 +127,9 @@ fn niri_cb(conn: &mut Connection<State>, state: &mut State) -> io::Result<()> {
             Ok(IpcEvent::WorkspaceActivated { id }) => {
                 if let Some(new_active) = niri.workspaces.iter().position(|ws| ws.id == id) {
                     // Clear the previous active workspace and apply it to the new one.
-                    if let Some(previous_active) = niri
-                        .workspaces
-                        .iter()
-                        .position(|ws| ws.is_active && ws.output == niri.workspaces[new_active].output)
-                    {
+                    if let Some(previous_active) = niri.workspaces.iter().position(|ws| {
+                        ws.is_active && ws.output == niri.workspaces[new_active].output
+                    }) {
                         niri.workspaces[previous_active].is_active = false;
                         niri.workspaces[new_active].is_active = true;
                         updated = true;
@@ -196,12 +195,11 @@ impl Ipc {
 #[derive(Debug, serde::Deserialize)]
 struct IpcWorkspace {
     id: u32,  // Niri's internal id is monotonic, only used for comparison.
-    idx: u32,  // idx is the user-facing workspace number.
+    idx: u32, // idx is the user-facing workspace number.
     name: Option<String>,
     output: String,
     is_focused: bool,
-    is_active: bool  // Niri's is_active means the workspace is visible on a display.
-    // active_window_id is unneeded.
+    is_active: bool, // Niri's is_active means the workspace is visible on a display.
 }
 
 #[derive(Debug, serde::Deserialize)]
