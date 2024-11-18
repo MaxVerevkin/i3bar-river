@@ -49,11 +49,17 @@ impl WmInfoProvider for NiriInfoProvider {
     fn get_tags(&self, output: &Output) -> Vec<Tag> {
         // Niri always generates an empty workspace rather than having an explicit workspace
         // creation command, so we make the last workspace active only if the user is looking at
-        // it. This makes the behavior of `hide_inactive_tags` useful for Niri.
-        self.workspaces
+        // it. This makes the behavior of `hide_inactive_tags` useful for Niri. Because we're
+        // looking for the last element, we have to create an intermediate vector to get the
+        // length.
+        let output_workspaces: Vec<_> = self
+            .workspaces
+            .iter()
+            .filter(|ws| ws.output == output.name)
+            .collect();
+        output_workspaces
             .iter()
             .enumerate()
-            .filter(|(_, ws)| ws.output == output.name)
             .map(|(i, ws)| Tag {
                 id: ws.idx,
                 name: ws.name.clone().map_or_else(
@@ -61,7 +67,7 @@ impl WmInfoProvider for NiriInfoProvider {
                     |name| format!("{0} / {1}", ws.idx, name),
                 ),
                 is_focused: ws.is_active,
-                is_active: i < self.workspaces.len() - 1 || ws.is_focused,
+                is_active: i < output_workspaces.len() - 1 || ws.is_focused,
                 is_urgent: false,
             })
             .collect()
