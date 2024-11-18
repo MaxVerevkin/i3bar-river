@@ -124,7 +124,7 @@ fn niri_cb(conn: &mut Connection<State>, state: &mut State) -> io::Result<()> {
                 niri.workspaces.sort_by_key(|w| w.idx);
                 updated = true;
             }
-            Ok(IpcEvent::WorkspaceActivated { id }) => {
+            Ok(IpcEvent::WorkspaceActivated { id, focused }) => {
                 if let Some(new_active) = niri.workspaces.iter().position(|ws| ws.id == id) {
                     // Clear the previous active workspace and apply it to the new one.
                     if let Some(previous_active) = niri.workspaces.iter().position(|ws| {
@@ -133,6 +133,15 @@ fn niri_cb(conn: &mut Connection<State>, state: &mut State) -> io::Result<()> {
                         niri.workspaces[previous_active].is_active = false;
                         niri.workspaces[new_active].is_active = true;
                         updated = true;
+                    }
+                    if focused {
+                        if let Some(previous_focused) =
+                            niri.workspaces.iter().position(|ws| ws.is_focused)
+                        {
+                            niri.workspaces[previous_focused].is_focused = false;
+                            niri.workspaces[new_active].is_focused = true;
+                            updated = true;
+                        }
                     }
                 }
             }
@@ -210,7 +219,7 @@ enum IpcEvent {
     },
     WorkspaceActivated {
         id: u32,
-        // focused doesn't matter for our purpose.
+        focused: bool,
     },
     #[serde(untagged)]
     Ignored(IgnoredAny),
