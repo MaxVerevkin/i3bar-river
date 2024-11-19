@@ -19,6 +19,9 @@ pub use river::*;
 mod hyprland;
 pub use hyprland::*;
 
+mod niri;
+pub use niri::*;
+
 pub trait WmInfoProvider {
     fn register(&self, _: &mut EventLoop) {}
 
@@ -60,6 +63,10 @@ pub fn bind(
 
     if let Some(hyprland) = HyprlandInfoProvider::new() {
         return Box::new(hyprland);
+    }
+
+    if let Some(niri) = NiriInfoProvider::new() {
+        return Box::new(niri);
     }
 
     Box::new(DummyInfoProvider)

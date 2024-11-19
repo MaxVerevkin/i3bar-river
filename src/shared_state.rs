@@ -23,4 +23,8 @@ impl SharedState {
     pub fn get_hyprland(&mut self) -> Option<&mut wm_info_provider::HyprlandInfoProvider> {
         self.wm_info_provider.as_any().downcast_mut()
     }
+
+    pub fn get_niri(&mut self) -> Option<&mut wm_info_provider::NiriInfoProvider> {
+        self.wm_info_provider.as_any().downcast_mut()
+    }
 }
