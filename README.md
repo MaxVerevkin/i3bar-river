@@ -1,6 +1,6 @@
 # i3bar-river
 
-This is a port of `i3bar` for wlroots-based window managers. Tags/workspaces are implemented for [river](https://github.com/riverwm/river) and [hyprland](https://github.com/hyprwm/Hyprland).
+This is a port of `i3bar` for wlroots-based window managers. Tags/workspaces are implemented for [river](https://codeberg.org/river/river), [hyprland](https://github.com/hyprwm/Hyprland) and [niri](https://github.com/YaLTeR/niri).
 
 ## i3bar compatibility
 
