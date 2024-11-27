@@ -174,7 +174,7 @@ impl<'de> Deserialize<'de> for MinWidth {
     {
         struct MinWidthVisitor;
 
-        impl<'de> de::Visitor<'de> for MinWidthVisitor {
+        impl de::Visitor<'_> for MinWidthVisitor {
             type Value = MinWidth;
 
             fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {

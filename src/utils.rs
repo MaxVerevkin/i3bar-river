@@ -63,7 +63,7 @@ pub fn de_first_json<'a, T: Deserialize<'a>>(
 ) -> Result<(Option<T>, &'a [u8]), JsonError> {
     while s
         .first()
-        .map_or(false, |&x| x == b' ' || x == b',' || x == b'\n')
+        .is_some_and(|&x| x == b' ' || x == b',' || x == b'\n')
     {
         s = &s[1..];
     }
