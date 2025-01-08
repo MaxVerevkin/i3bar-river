@@ -1,6 +1,5 @@
 use std::any::Any;
 
-use wayrs_client::global::*;
 use wayrs_client::Connection;
 
 use crate::config::WmConfig;
@@ -52,12 +51,8 @@ pub trait WmInfoProvider {
     fn as_any(&mut self) -> &mut dyn Any;
 }
 
-pub fn bind(
-    conn: &mut Connection<State>,
-    globals: &Globals,
-    config: &WmConfig,
-) -> Box<dyn WmInfoProvider> {
-    if let Some(river) = RiverInfoProvider::bind(conn, globals, config) {
+pub fn bind(conn: &mut Connection<State>, config: &WmConfig) -> Box<dyn WmInfoProvider> {
+    if let Some(river) = RiverInfoProvider::bind(conn, config) {
         return Box::new(river);
     }
 

@@ -8,7 +8,7 @@ use std::fmt::Display;
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::path::Path;
 
-use wayrs_client::global::{GlobalExt, Globals, GlobalsExt};
+use wayrs_client::global::GlobalExt;
 use wayrs_client::proxy::Proxy;
 use wayrs_client::{Connection, EventCtx};
 use wayrs_utils::cursor::{CursorImage, CursorShape, CursorTheme, ThemedPointer};
@@ -57,7 +57,6 @@ struct Pointer {
 impl State {
     pub fn new(
         conn: &mut Connection<Self>,
-        globals: &Globals,
         event_loop: &mut EventLoop,
         config_path: Option<&Path>,
     ) -> Self {
@@ -73,38 +72,34 @@ impl State {
             .and_then(|cmd| StatusCmd::new(cmd).map_err(|e| error = Err(e)).ok());
 
         conn.add_registry_cb(wl_registry_cb);
-        let wl_compositor = globals.bind(conn, 4..=5).unwrap();
+        let wl_compositor = conn.bind_singleton(4..=5).unwrap();
 
-        let cursor_theme = CursorTheme::new(conn, globals, wl_compositor);
+        let cursor_theme = CursorTheme::new(conn, wl_compositor);
         let default_cursor = cursor_theme
             .get_image(CursorShape::Default)
             .map_err(|e| error = Err(e.into()))
             .ok();
 
-        let wm_info_provider = wm_info_provider::bind(conn, globals, &config.wm);
+        let wm_info_provider = wm_info_provider::bind(conn, &config.wm);
         wm_info_provider.register(event_loop);
 
         let mut this = Self {
             wl_compositor,
-            layer_shell: globals.bind(conn, 1..=4).unwrap(),
-            viewporter: globals.bind(conn, 1..=1).unwrap(),
-            fractional_scale_manager: globals.bind(conn, 1..=1).ok(),
+            layer_shell: conn.bind_singleton(1..=4).unwrap(),
+            viewporter: conn.bind_singleton(1).unwrap(),
+            fractional_scale_manager: conn.bind_singleton(1).ok(),
 
-            seats: Seats::bind(conn, globals),
+            seats: Seats::bind(conn),
             pointers: Vec::new(),
 
-            pending_outputs: globals
-                .iter()
-                .filter(|g| g.is::<WlOutput>())
-                .map(|g| PendingOutput::bind(conn, g))
-                .collect(),
+            pending_outputs: Vec::new(),
 
             hidden: false,
             has_error: false,
             bars: Vec::new(),
 
             shared_state: SharedState {
-                shm: ShmAlloc::bind(conn, globals).unwrap(),
+                shm: ShmAlloc::bind(conn).unwrap(),
                 config,
                 status_cmd,
                 blocks_cache: BlocksCache::default(),

@@ -1,6 +1,6 @@
 use wayrs_client::global::{Global, GlobalExt};
-use wayrs_client::Connection;
-use wayrs_client::{protocol::*, EventCtx};
+use wayrs_client::protocol::*;
+use wayrs_client::{Connection, EventCtx};
 
 use crate::state::State;
 

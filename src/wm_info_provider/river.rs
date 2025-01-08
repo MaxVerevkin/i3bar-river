@@ -1,6 +1,5 @@
 use std::ffi::CString;
 
-use wayrs_client::global::*;
 use wayrs_client::proxy::Proxy;
 use wayrs_client::EventCtx;
 
@@ -11,7 +10,7 @@ pub struct RiverInfoProvider {
     control: ZriverControlV1,
     output_statuses: Vec<OutputStatus>,
     max_tag: u8,
-    seat_status: SeatStatus,
+    mode: Option<String>,
 }
 
 struct OutputStatus {
@@ -23,33 +22,21 @@ struct OutputStatus {
     layout_name: Option<String>,
 }
 
-struct SeatStatus {
-    _status: ZriverSeatStatusV1,
-    mode: Option<String>,
-}
-
 impl RiverInfoProvider {
-    pub fn bind(
-        conn: &mut Connection<State>,
-        globals: &Globals,
-        config: &WmConfig,
-    ) -> Option<Self> {
-        let status_manager: ZriverStatusManagerV1 = globals.bind(conn, 1..=4).ok()?;
-        let wl_seat: WlSeat = globals.bind(conn, ..=5).ok()?; // river supports just one seat
-        let seat_status =
-            status_manager.get_river_seat_status_with_cb(conn, wl_seat, seat_status_cb);
+    pub fn bind(conn: &mut Connection<State>, config: &WmConfig) -> Option<Self> {
+        let control = conn.bind_singleton(1).ok()?;
+        let status_manager: ZriverStatusManagerV1 = conn.bind_singleton(..=4).ok()?;
+        let wl_seat = conn.bind_singleton(..=5).ok()?; // river supports just one seat
+        status_manager.get_river_seat_status_with_cb(conn, wl_seat, seat_status_cb);
         if wl_seat.version() >= 5 {
             wl_seat.release(conn);
         }
         Some(Self {
             status_manager,
-            control: globals.bind(conn, 1).ok()?,
+            control,
             output_statuses: Vec::new(),
             max_tag: config.river.max_tag,
-            seat_status: SeatStatus {
-                _status: seat_status,
-                mode: None,
-            },
+            mode: None,
         })
     }
 
@@ -112,7 +99,7 @@ impl WmInfoProvider for RiverInfoProvider {
     }
 
     fn get_mode_name(&self, _output: &Output) -> Option<String> {
-        self.seat_status.mode.clone()
+        self.mode.clone()
     }
 
     fn click_on_tag(
@@ -204,7 +191,7 @@ fn seat_status_cb(ctx: EventCtx<State, ZriverSeatStatusV1>) {
     if let zriver_seat_status_v1::Event::Mode(mode) = ctx.event {
         let river = ctx.state.shared_state.get_river().unwrap();
         let mode = mode.to_string_lossy().into_owned();
-        river.seat_status.mode = (mode != "normal").then_some(mode);
+        river.mode = (mode != "normal").then_some(mode);
         ctx.state.mode_name_updated(ctx.conn, None);
     }
 }

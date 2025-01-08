@@ -43,9 +43,11 @@ fn main() -> anyhow::Result<()> {
     let [sig_read, sig_write] = pipe(libc::O_NONBLOCK | libc::O_CLOEXEC)?;
     signal_hook::low_level::pipe::register(SIGUSR1, sig_write)?;
 
-    let (mut conn, globals) = Connection::connect_and_collect_globals()?;
+    let mut conn = Connection::connect()?;
+    conn.blocking_roundtrip()?;
+
     let mut el = EventLoop::new();
-    let mut state = State::new(&mut conn, &globals, &mut el, args.config.as_deref());
+    let mut state = State::new(&mut conn, &mut el, args.config.as_deref());
     conn.flush(IoMode::Blocking)?;
 
     el.add_on_idle(|ctx| {
