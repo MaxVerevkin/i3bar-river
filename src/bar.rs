@@ -479,9 +479,14 @@ fn render_blocks(
         });
     }
 
+    // Disable separator after the last block
+    if let Some(last) = blocks_computed.last_mut() {
+        last.separator = false;
+        last.separator_block_width = 0;
+    }
+
     // Render blocks
     buttons.clear();
-    let mut j = 0;
     for series in blocks_computed {
         let s_len = series.blocks.len();
         for (i, computed) in series.blocks.into_iter().enumerate() {
@@ -491,7 +496,6 @@ fn render_blocks(
             } else {
                 &computed.full
             };
-            j += 1;
             to_render.render(
                 context,
                 RenderOptions {
@@ -511,17 +515,17 @@ fn render_blocks(
             );
             blocks_width -= to_render.width;
         }
-        if j != blocks.len() && series.separator_block_width > 0 {
-            let w = series.separator_block_width as f64;
-            if series.separator && config.separator_width > 0.0 {
-                config.separator.apply(context);
-                context.set_line_width(config.separator_width);
-                context.move_to(full_width - blocks_width + w * 0.5, full_height * 0.1);
-                context.line_to(full_width - blocks_width + w * 0.5, full_height * 0.9);
-                context.stroke().unwrap();
-            }
-            blocks_width -= w;
+
+        let separator_block_width = series.separator_block_width as f64;
+        if series.separator && config.separator_width > 0.0 {
+            let x = full_width - blocks_width + separator_block_width * 0.5;
+            config.separator.apply(context);
+            context.set_line_width(config.separator_width);
+            context.move_to(x, full_height * 0.1);
+            context.line_to(x, full_height * 0.9);
+            context.stroke().unwrap();
         }
+        blocks_width -= separator_block_width;
     }
 
     context.reset_clip();
