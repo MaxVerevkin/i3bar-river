@@ -100,10 +100,10 @@ impl Protocol {
                     *self = Self::JsonNotStarted { header };
                     self.process_new_bytes(rem)
                 }
-                Ok((Some(header), _)) => Err(Error::new(
-                    ErrorKind::Other,
-                    format!("Protocol version {} is not supported", header.version),
-                )),
+                Ok((Some(header), _)) => Err(Error::other(format!(
+                    "Protocol version {} is not supported",
+                    header.version
+                ))),
                 _ => {
                     *self = Self::PlainText { pending_line: None };
                     self.process_new_bytes(bytes)
