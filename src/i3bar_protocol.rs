@@ -2,7 +2,7 @@ use crate::color::Color;
 use crate::pointer_btn::PointerBtn;
 use crate::text::Align;
 use crate::utils::{de_first_json, de_last_json, last_line};
-use serde::{de, Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de};
 use std::io::{self, Error, ErrorKind};
 
 #[derive(Clone, Deserialize, Default, Debug)]

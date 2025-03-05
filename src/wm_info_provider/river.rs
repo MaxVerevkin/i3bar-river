@@ -1,7 +1,7 @@
 use std::ffi::CString;
 
-use wayrs_client::proxy::Proxy;
 use wayrs_client::EventCtx;
+use wayrs_client::proxy::Proxy;
 
 use super::*;
 

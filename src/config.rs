@@ -2,7 +2,7 @@ use crate::color::Color;
 use crate::protocol::{zwlr_layer_shell_v1, zwlr_layer_surface_v1};
 use anyhow::{Context, Result};
 use pangocairo::pango::FontDescription;
-use serde::{de, Deserialize};
+use serde::{Deserialize, de};
 use std::collections::HashMap;
 use std::fs::read_to_string;
 use std::ops::Deref;
