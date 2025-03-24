@@ -109,6 +109,7 @@ fn main() -> anyhow::Result<()> {
     unreachable!();
 }
 
+// TODO: remove once Rust 1.87.0 is stable
 fn pipe(flags: libc::c_int) -> io::Result<[RawFd; 2]> {
     let mut fds = [0; 2];
     if unsafe { libc::pipe2(fds.as_mut_ptr(), flags) } == -1 {
