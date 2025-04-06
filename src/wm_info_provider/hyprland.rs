@@ -104,10 +104,6 @@ impl WmInfoProvider for HyprlandInfoProvider {
             _ => (),
         }
     }
-
-    fn as_any(&mut self) -> &mut dyn Any {
-        self
-    }
 }
 
 fn hyprland_cb(conn: &mut Connection<State>, state: &mut State) -> io::Result<()> {

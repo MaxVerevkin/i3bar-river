@@ -21,7 +21,7 @@ pub use hyprland::*;
 mod niri;
 pub use niri::*;
 
-pub trait WmInfoProvider {
+pub trait WmInfoProvider: Any {
     fn register(&self, _: &mut EventLoop) {}
 
     fn new_ouput(&mut self, _: &mut Connection<State>, _: &Output) {}
@@ -46,9 +46,6 @@ pub trait WmInfoProvider {
         _btn: PointerBtn,
     ) {
     }
-
-    // TODO: remove once RFC3324 (dyn upcasting coercion) is stabilized (hopefully in Rust 1.86.0)
-    fn as_any(&mut self) -> &mut dyn Any;
 }
 
 pub fn bind(conn: &mut Connection<State>, config: &WmConfig) -> Box<dyn WmInfoProvider> {

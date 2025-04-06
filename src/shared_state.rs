@@ -1,3 +1,5 @@
+use std::any::Any;
+
 use crate::{
     blocks_cache::BlocksCache,
     config::Config,
@@ -16,15 +18,19 @@ pub struct SharedState {
 }
 
 impl SharedState {
+    fn downcast_provider<T: Any>(&mut self) -> Option<&mut T> {
+        <dyn Any>::downcast_mut(self.wm_info_provider.as_mut())
+    }
+
     pub fn get_river(&mut self) -> Option<&mut wm_info_provider::RiverInfoProvider> {
-        self.wm_info_provider.as_any().downcast_mut()
+        self.downcast_provider()
     }
 
     pub fn get_hyprland(&mut self) -> Option<&mut wm_info_provider::HyprlandInfoProvider> {
-        self.wm_info_provider.as_any().downcast_mut()
+        self.downcast_provider()
     }
 
     pub fn get_niri(&mut self) -> Option<&mut wm_info_provider::NiriInfoProvider> {
-        self.wm_info_provider.as_any().downcast_mut()
+        self.downcast_provider()
     }
 }

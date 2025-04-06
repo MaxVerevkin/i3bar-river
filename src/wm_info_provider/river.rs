@@ -144,10 +144,6 @@ impl WmInfoProvider for RiverInfoProvider {
             _ => (),
         }
     }
-
-    fn as_any(&mut self) -> &mut dyn Any {
-        self
-    }
 }
 
 fn output_status_cb(ctx: EventCtx<State, ZriverOutputStatusV1>) {

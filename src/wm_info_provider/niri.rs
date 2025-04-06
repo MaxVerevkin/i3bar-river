@@ -114,10 +114,6 @@ impl WmInfoProvider for NiriInfoProvider {
             _ => (),
         }
     }
-
-    fn as_any(&mut self) -> &mut dyn Any {
-        self
-    }
 }
 
 fn niri_cb(conn: &mut Connection<State>, state: &mut State) -> io::Result<()> {
