@@ -94,7 +94,7 @@ impl State {
 
             pending_outputs: Vec::new(),
 
-            hidden: false,
+            hidden: config.start_hidden,
             has_error: false,
             bars: Vec::new(),
 

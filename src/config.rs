@@ -48,6 +48,7 @@ pub struct Config {
     pub show_layout_name: bool,
     pub blend: bool,
     pub show_mode: bool,
+    pub start_hidden: bool,
     // wm-specific
     pub wm: WmConfig,
     // overrides
@@ -93,6 +94,7 @@ impl Default for Config {
             show_layout_name: true,
             blend: true,
             show_mode: true,
+            start_hidden: false,
 
             wm: WmConfig {
                 river: RiverConfig { max_tag: 9 },

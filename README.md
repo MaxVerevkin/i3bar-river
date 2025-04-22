@@ -83,6 +83,7 @@ show_tags = true
 show_layout_name = true
 blend = true # whether tags/blocks colors should blend with bar's background
 show_mode = true
+start_hidden = false # whether the bar is initially in the 'hidden' state
 
 # WM-specific options
 [wm.river]
