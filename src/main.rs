@@ -18,8 +18,8 @@ mod text;
 mod utils;
 mod wm_info_provider;
 
-use std::io::{self, ErrorKind};
-use std::os::fd::{AsRawFd, RawFd};
+use std::io::{self, ErrorKind, Read};
+use std::os::fd::AsRawFd;
 use std::path::PathBuf;
 
 use clap::Parser;
@@ -40,7 +40,7 @@ struct Cli {
 fn main() -> anyhow::Result<()> {
     let args = Cli::parse();
 
-    let [sig_read, sig_write] = pipe(libc::O_NONBLOCK | libc::O_CLOEXEC)?;
+    let (mut sig_read, sig_write) = io::pipe()?;
     signal_hook::low_level::pipe::register(SIGUSR1, sig_write)?;
 
     let mut conn = Connection::connect()?;
@@ -55,12 +55,8 @@ fn main() -> anyhow::Result<()> {
         Ok(event_loop::Action::Keep)
     });
 
-    el.register_with_fd(sig_read, move |ctx| {
-        let mut buf = [0u8];
-        assert_eq!(
-            unsafe { libc::read(sig_read, buf.as_mut_ptr().cast(), 1) },
-            1
-        );
+    el.register_with_fd(sig_read.as_raw_fd(), move |ctx| {
+        sig_read.read_exact(&mut [0u8]).unwrap();
         ctx.state.toggle_visibility(ctx.conn);
         Ok(event_loop::Action::Keep)
     });
@@ -107,14 +103,4 @@ fn main() -> anyhow::Result<()> {
 
     el.run(&mut conn, &mut state)?;
     unreachable!();
-}
-
-// TODO: remove once Rust 1.87.0 is stable
-fn pipe(flags: libc::c_int) -> io::Result<[RawFd; 2]> {
-    let mut fds = [0; 2];
-    if unsafe { libc::pipe2(fds.as_mut_ptr(), flags) } == -1 {
-        Err(io::Error::last_os_error())
-    } else {
-        Ok(fds)
-    }
 }
