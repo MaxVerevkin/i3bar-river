@@ -12,13 +12,19 @@ use crate::state::State;
 mod dummy;
 pub use dummy::*;
 
+#[cfg(feature = "river")]
 mod river;
+#[cfg(feature = "river")]
 pub use river::*;
 
+#[cfg(feature = "hyprland")]
 mod hyprland;
+#[cfg(feature = "hyprland")]
 pub use hyprland::*;
 
+#[cfg(feature = "niri")]
 mod niri;
+#[cfg(feature = "niri")]
 pub use niri::*;
 
 pub trait WmInfoProvider: Any {
@@ -49,14 +55,17 @@ pub trait WmInfoProvider: Any {
 }
 
 pub fn bind(conn: &mut Connection<State>, config: &WmConfig) -> Box<dyn WmInfoProvider> {
+    #[cfg(feature = "river")]
     if let Some(river) = RiverInfoProvider::bind(conn, config) {
         return Box::new(river);
     }
 
+    #[cfg(feature = "hyprland")]
     if let Some(hyprland) = HyprlandInfoProvider::new() {
         return Box::new(hyprland);
     }
 
+    #[cfg(feature = "niri")]
     if let Some(niri) = NiriInfoProvider::new() {
         return Box::new(niri);
     }

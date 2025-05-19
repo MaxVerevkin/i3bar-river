@@ -22,14 +22,17 @@ impl SharedState {
         <dyn Any>::downcast_mut(self.wm_info_provider.as_mut())
     }
 
+    #[cfg(feature = "river")]
     pub fn get_river(&mut self) -> Option<&mut wm_info_provider::RiverInfoProvider> {
         self.downcast_provider()
     }
 
+    #[cfg(feature = "hyprland")]
     pub fn get_hyprland(&mut self) -> Option<&mut wm_info_provider::HyprlandInfoProvider> {
         self.downcast_provider()
     }
 
+    #[cfg(feature = "niri")]
     pub fn get_niri(&mut self) -> Option<&mut wm_info_provider::NiriInfoProvider> {
         self.downcast_provider()
     }
