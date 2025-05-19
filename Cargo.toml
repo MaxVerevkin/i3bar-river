@@ -16,11 +16,17 @@ serde_json = "1"
 serde = { version = "1", features = ["derive"] }
 signal-hook = { version = "0.3", default-features = false }
 toml = { version = "0.8", default-features = false, features = ["parse"] }
-wayrs-client = "1.0" 
+wayrs-client = "1.0"
 wayrs-protocols = { version = "0.14", features = ["wlr-layer-shell-unstable-v1", "viewporter", "fractional-scale-v1"] }
 wayrs-utils = { version = "0.17", features = ["cursor", "shm_alloc", "seats"] }
 clap = { version = "4.3", default-features = false, features = ["derive", "std", "help", "usage"] }
 libc = "0.2"
+
+[features]
+default = ["river", "niri", "hyprland"]
+river = []
+niri = []
+hyprland = []
 
 [profile.release]
 lto = "fat"
