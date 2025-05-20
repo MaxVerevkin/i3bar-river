@@ -112,6 +112,9 @@ impl State {
 
         if let Err(e) = error {
             this.set_error(conn, "init", e.to_string());
+
+            // Show the error with anyhow's “Caused by” attribute.
+            eprintln!("Error on init: {:?}", e);
         }
 
         this

@@ -1,31 +1,26 @@
 use crate::color::Color;
+use crate::config::theme::Theme;
 use crate::protocol::{zwlr_layer_shell_v1, zwlr_layer_surface_v1};
+
 use anyhow::{Context, Result};
 use pangocairo::pango::FontDescription;
 use serde::{Deserialize, de};
+
 use std::collections::HashMap;
 use std::fs::read_to_string;
 use std::ops::Deref;
 use std::path::{Path, PathBuf};
 use std::{env, fmt};
 
+mod theme;
+
 #[derive(Deserialize, Debug)]
 #[serde(deny_unknown_fields, default)]
 pub struct Config {
-    // command
     pub command: Option<String>,
-    // colors
-    pub background: Color,
-    pub color: Color,
-    pub separator: Color,
-    pub tag_fg: Color,
-    pub tag_bg: Color,
-    pub tag_focused_fg: Color,
-    pub tag_focused_bg: Color,
-    pub tag_urgent_fg: Color,
-    pub tag_urgent_bg: Color,
-    pub tag_inactive_fg: Color,
-    pub tag_inactive_bg: Color,
+
+    pub theme: Theme,
+
     // font and size
     pub font: Font,
     pub height: u32,
@@ -39,27 +34,46 @@ pub struct Config {
     pub tags_margin: f64,
     pub blocks_r: f64,
     pub blocks_overlap: f64,
+
     // misc
     pub position: Position,
     pub layer: Layer,
-    pub hide_inactive_tags: bool,
     pub invert_touchpad_scrolling: bool,
-    pub show_tags: bool,
-    pub show_layout_name: bool,
-    pub blend: bool,
-    pub show_mode: bool,
     pub start_hidden: bool,
+
     // wm-specific
     pub wm: WmConfig,
+
     // overrides
     pub output: HashMap<String, OutputOverrides>,
 }
 
-impl Default for Config {
+#[derive(Debug)]
+pub struct Palette {
+    // colors
+    pub background: Color,
+    pub color: Color,
+    pub separator: Color,
+    pub tag_fg: Color,
+    pub tag_bg: Color,
+    pub tag_focused_fg: Color,
+    pub tag_focused_bg: Color,
+    pub tag_urgent_fg: Color,
+    pub tag_urgent_bg: Color,
+    pub tag_inactive_fg: Color,
+    pub tag_inactive_bg: Color,
+
+    // Additional shown stuff
+    pub hide_inactive_tags: bool,
+    pub show_tags: bool,
+    pub show_layout_name: bool,
+    pub blend: bool,
+    pub show_mode: bool,
+}
+
+impl Default for Palette {
     fn default() -> Self {
         Self {
-            command: None,
-
             // A kind of gruvbox theme
             background: Color::from_rgba_hex(0x282828ff),
             color: Color::from_rgba_hex(0xffffffff),
@@ -72,6 +86,22 @@ impl Default for Config {
             tag_urgent_bg: Color::from_rgba_hex(0xcc241dff),
             tag_inactive_fg: Color::from_rgba_hex(0xd79921ff),
             tag_inactive_bg: Color::from_rgba_hex(0x282828ff),
+
+            hide_inactive_tags: true,
+            show_layout_name: true,
+            show_tags: true,
+            blend: true,
+            show_mode: true,
+        }
+    }
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            command: None,
+
+            theme: Theme::default(),
 
             font: Font::new("monospace 10"),
             height: 24,
@@ -88,12 +118,7 @@ impl Default for Config {
 
             position: Position::Top,
             layer: Layer::Top,
-            hide_inactive_tags: true,
             invert_touchpad_scrolling: true,
-            show_tags: true,
-            show_layout_name: true,
-            blend: true,
-            show_mode: true,
             start_hidden: false,
 
             wm: WmConfig {

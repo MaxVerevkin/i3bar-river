@@ -20,6 +20,7 @@ struct OutputStatus {
     urgent_tags: u32,
     active_tags: u32,
     layout_name: Option<String>,
+    is_focused: bool,
 }
 
 impl RiverInfoProvider {
@@ -62,6 +63,7 @@ impl WmInfoProvider for RiverInfoProvider {
             urgent_tags: 0,
             active_tags: 0,
             layout_name: None,
+            is_focused: true,
         });
     }
 
@@ -100,6 +102,14 @@ impl WmInfoProvider for RiverInfoProvider {
 
     fn get_mode_name(&self, _output: &Output) -> Option<String> {
         self.mode.clone()
+    }
+
+    fn is_output_focused(&self, output: &Output) -> bool {
+        self.output_statuses
+            .iter()
+            .find(|s| s.output == output.wl)
+            .map(|s| s.is_focused)
+            .unwrap_or(true)
     }
 
     fn click_on_tag(
@@ -184,11 +194,38 @@ fn output_status_cb(ctx: EventCtx<State, ZriverOutputStatusV1>) {
 }
 
 fn seat_status_cb(ctx: EventCtx<State, ZriverSeatStatusV1>) {
-    if let zriver_seat_status_v1::Event::Mode(mode) = ctx.event {
-        let river = ctx.state.shared_state.get_river().unwrap();
-        let mode = mode.to_string_lossy().into_owned();
-        river.mode = (mode != "normal").then_some(mode);
-        ctx.state.mode_name_updated(ctx.conn, None);
+    match ctx.event {
+        zriver_seat_status_v1::Event::Mode(mode) => {
+            let river = ctx.state.shared_state.get_river().unwrap();
+            let mode = mode.to_string_lossy().into_owned();
+            river.mode = (mode != "normal").then_some(mode);
+            ctx.state.mode_name_updated(ctx.conn, None);
+        }
+        zriver_seat_status_v1::Event::FocusedOutput(output) => {
+            let river = ctx.state.shared_state.get_river().unwrap();
+            let Some(status) = river
+                .output_statuses
+                .iter_mut()
+                .find(|s| s.output == output)
+            else {
+                return;
+            };
+            status.is_focused = true;
+            ctx.state.tags_updated(ctx.conn, None);
+        }
+        zriver_seat_status_v1::Event::UnfocusedOutput(output) => {
+            let river = ctx.state.shared_state.get_river().unwrap();
+            let Some(status) = river
+                .output_statuses
+                .iter_mut()
+                .find(|s| s.output == output)
+            else {
+                return;
+            };
+            status.is_focused = false;
+            ctx.state.tags_updated(ctx.conn, None);
+        }
+        _ => {}
     }
 }
 

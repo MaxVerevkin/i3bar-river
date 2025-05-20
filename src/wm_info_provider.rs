@@ -43,6 +43,13 @@ pub trait WmInfoProvider: Any {
         None
     }
 
+    /// Whether an output is focused.
+    ///
+    /// This is primary useful to allow the user to change the theme for unfocused outputs.
+    fn is_output_focused(&self, _out: &Output) -> bool {
+        true
+    }
+
     fn click_on_tag(
         &mut self,
         _conn: &mut Connection<State>,
@@ -77,7 +84,13 @@ pub fn bind(conn: &mut Connection<State>, config: &WmConfig) -> Box<dyn WmInfoPr
 pub struct Tag {
     pub id: u32,
     pub name: String,
+
+    /// The tag is shown to the user (“focused”).
     pub is_focused: bool,
+
+    /// The tag contains views.
     pub is_active: bool,
+
+    /// The tag contains views marked as “urgent”.
     pub is_urgent: bool,
 }
