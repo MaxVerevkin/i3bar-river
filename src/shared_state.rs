@@ -37,3 +37,18 @@ impl SharedState {
         self.downcast_provider()
     }
 }
+
+/// “Select for output”
+///
+/// This avoids verbose code, when deciding which theme to use.
+macro_rules! sfo {
+    ($self:expr, $output:expr, $what:ident) => {
+        if $self.wm_info_provider.is_output_focused($output) {
+            $self.config.theme.palette.$what
+        } else {
+            $self.config.theme.unfocused_output.$what
+        }
+    };
+}
+
+pub(crate) use sfo;

@@ -6,12 +6,12 @@ use wayrs_utils::shm_alloc::BufferSpec;
 use crate::blocks_cache::ComputedBlock;
 use crate::button_manager::ButtonManager;
 use crate::color::Color;
-use crate::config::{Config, Position};
+use crate::config::Position;
 use crate::i3bar_protocol;
 use crate::output::Output;
 use crate::pointer_btn::PointerBtn;
 use crate::protocol::*;
-use crate::shared_state::SharedState;
+use crate::shared_state::{SharedState, sfo};
 use crate::state::State;
 use crate::text::{self, ComputedText, RenderOptions};
 use crate::wm_info_provider::Tag;
@@ -194,36 +194,60 @@ impl Bar {
         let cairo_ctx = cairo::Context::new(&cairo_surf).expect("cairo context");
         cairo_ctx.scale(scale_f, scale_f);
 
-        if !ss.config.blend {
+        if !sfo!(ss, &self.output, blend) {
             cairo_ctx.set_operator(cairo::Operator::Source);
         }
 
         // Background
-        if ss.config.blend {
+        if sfo!(ss, &self.output, blend) {
             cairo_ctx.save().unwrap();
             cairo_ctx.set_operator(cairo::Operator::Source);
         }
-        ss.config.background.apply(&cairo_ctx);
+        sfo!(ss, &self.output, background).apply(&cairo_ctx);
         cairo_ctx.paint().unwrap();
-        if ss.config.blend {
+        if sfo!(ss, &self.output, blend) {
             cairo_ctx.restore().unwrap();
         }
 
         // Compute tags
-        if ss.config.show_tags && self.tags_computed.is_empty() {
+        if sfo!(ss, &self.output, show_tags) && self.tags_computed.is_empty() {
             for tag in &self.tags {
                 let (bg, fg) = if tag.is_urgent {
-                    (ss.config.tag_urgent_bg, ss.config.tag_urgent_fg)
+                    (
+                        sfo!(ss, &self.output, tag_urgent_bg),
+                        sfo!(ss, &self.output, tag_urgent_fg),
+                    )
                 } else if tag.is_focused {
-                    (ss.config.tag_focused_bg, ss.config.tag_focused_fg)
+                    (
+                        sfo!(ss, &self.output, tag_focused_bg),
+                        sfo!(ss, &self.output, tag_focused_fg),
+                    )
                 } else if tag.is_active {
-                    (ss.config.tag_bg, ss.config.tag_fg)
-                } else if !ss.config.hide_inactive_tags {
-                    (ss.config.tag_inactive_bg, ss.config.tag_inactive_fg)
+                    (
+                        sfo!(ss, &self.output, tag_bg),
+                        sfo!(ss, &self.output, tag_fg),
+                    )
+                } else if !sfo!(ss, &self.output, hide_inactive_tags) {
+                    (
+                        sfo!(ss, &self.output, tag_inactive_bg),
+                        sfo!(ss, &self.output, tag_inactive_fg),
+                    )
                 } else {
                     continue;
                 };
-                let comp = compute_tag_label(&tag.name, &ss.config);
+                let comp = {
+                    ComputedText::new(
+                        &tag.name,
+                        text::Attributes {
+                            font: &ss.config.font,
+                            padding_left: ss.config.tags_padding,
+                            padding_right: ss.config.tags_padding,
+                            min_width: None,
+                            align: Default::default(),
+                            markup: false,
+                        },
+                    )
+                };
                 self.tags_computed
                     .push((tag.id, ColorPair { bg, fg }, comp));
             }
@@ -256,7 +280,7 @@ impl Bar {
         }
 
         // Display layout name
-        if ss.config.show_layout_name {
+        if sfo!(ss, &self.output, show_layout_name) {
             if let Some(layout_name) = &self.layout_name {
                 let text = self.layout_name_computed.get_or_insert_with(|| {
                     ComputedText::new(
@@ -276,7 +300,7 @@ impl Bar {
                     RenderOptions {
                         x_offset: offset_left,
                         bar_height: height_f,
-                        fg_color: ss.config.tag_inactive_fg,
+                        fg_color: sfo!(ss, &self.output, tag_inactive_fg),
                         bg_color: None,
                         r_left: 0.0,
                         r_right: 0.0,
@@ -288,7 +312,7 @@ impl Bar {
         }
 
         // Display mode
-        if ss.config.show_mode {
+        if sfo!(ss, &self.output, show_mode) {
             if let Some(mode) = &self.mode_name {
                 let text = self.mode_computed.get_or_insert_with(|| {
                     ComputedText::new(
@@ -308,8 +332,8 @@ impl Bar {
                     RenderOptions {
                         x_offset: offset_left,
                         bar_height: height_f,
-                        fg_color: ss.config.tag_urgent_fg,
-                        bg_color: Some(ss.config.tag_urgent_bg),
+                        fg_color: sfo!(ss, &self.output, tag_urgent_fg),
+                        bg_color: Some(sfo!(ss, &self.output, tag_urgent_bg)),
                         r_left: ss.config.tags_r,
                         r_right: ss.config.tags_r,
                         overlap: 0.0,
@@ -322,7 +346,8 @@ impl Bar {
         // Display the blocks
         render_blocks(
             &cairo_ctx,
-            &ss.config,
+            ss,
+            &self.output,
             ss.blocks_cache.get_computed(),
             &mut self.blocks_btns,
             offset_left,
@@ -360,24 +385,25 @@ impl Bar {
 
         self.hidden = false;
 
-        let config = &shared_state.config;
+        let ss = shared_state;
 
-        self.layer_surface.set_size(conn, 0, config.height);
-        self.layer_surface.set_anchor(conn, config.position.into());
+        self.layer_surface.set_size(conn, 0, ss.config.height);
+        self.layer_surface
+            .set_anchor(conn, ss.config.position.into());
         self.layer_surface.set_margin(
             conn,
-            config.margin_top,
-            config.margin_right,
-            config.margin_bottom,
-            config.margin_left,
+            ss.config.margin_top,
+            ss.config.margin_right,
+            ss.config.margin_bottom,
+            ss.config.margin_left,
         );
         self.layer_surface.set_exclusive_zone(
             conn,
-            (shared_state.config.height) as i32
-                + if config.position == Position::Top {
-                    shared_state.config.margin_bottom
+            (ss.config.height) as i32
+                + if ss.config.position == Position::Top {
+                    ss.config.margin_bottom
                 } else {
-                    shared_state.config.margin_top
+                    ss.config.margin_top
                 },
         );
 
@@ -395,7 +421,8 @@ impl Bar {
 #[allow(clippy::too_many_arguments)]
 fn render_blocks(
     context: &cairo::Context,
-    config: &Config,
+    ss: &SharedState,
+    output: &Output,
     blocks: &[ComputedBlock],
     buttons: &mut ButtonManager<(Option<String>, Option<String>)>,
     offset_left: f64,
@@ -501,11 +528,15 @@ fn render_blocks(
                 RenderOptions {
                     x_offset: full_width - blocks_width,
                     bar_height: full_height,
-                    fg_color: block.color.unwrap_or(config.color),
+                    fg_color: block.color.unwrap_or(sfo!(ss, &output, color)),
                     bg_color: block.background,
-                    r_left: if i == 0 { config.blocks_r } else { 0.0 },
-                    r_right: if i + 1 == s_len { config.blocks_r } else { 0.0 },
-                    overlap: config.blocks_overlap,
+                    r_left: if i == 0 { ss.config.blocks_r } else { 0.0 },
+                    r_right: if i + 1 == s_len {
+                        ss.config.blocks_r
+                    } else {
+                        0.0
+                    },
+                    overlap: ss.config.blocks_overlap,
                 },
             );
             buttons.push(
@@ -517,10 +548,10 @@ fn render_blocks(
         }
 
         let separator_block_width = series.separator_block_width as f64;
-        if series.separator && config.separator_width > 0.0 {
+        if series.separator && ss.config.separator_width > 0.0 {
             let x = full_width - blocks_width + separator_block_width * 0.5;
-            config.separator.apply(context);
-            context.set_line_width(config.separator_width);
+            sfo!(ss, &output, separator).apply(context);
+            context.set_line_width(ss.config.separator_width);
             context.move_to(x, full_height * 0.1);
             context.line_to(x, full_height * 0.9);
             context.stroke().unwrap();
@@ -529,20 +560,6 @@ fn render_blocks(
     }
 
     context.reset_clip();
-}
-
-pub fn compute_tag_label(label: &str, config: &Config) -> ComputedText {
-    ComputedText::new(
-        label,
-        text::Attributes {
-            font: &config.font.0,
-            padding_left: config.tags_padding,
-            padding_right: config.tags_padding,
-            min_width: None,
-            align: Default::default(),
-            markup: false,
-        },
-    )
 }
 
 fn layer_surface_cb(ctx: EventCtx<State, ZwlrLayerSurfaceV1>) {
